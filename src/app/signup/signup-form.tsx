@@ -6,16 +6,17 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useRouter } from 'next/navigation';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, User, Mail, Lock } from 'lucide-react';
+import { Loader2, User, Mail, Lock, Store } from 'lucide-react';
 
 const formSchema = z.object({
   fullName: z.string().min(2, { message: 'Full name must be at least 2 characters.' }),
+  shopName: z.string().min(2, { message: 'Shop name must be at least 2 characters.' }),
   email: z.string().email({ message: 'Please enter a valid email address.' }),
   password: z.string().min(6, { message: 'Password must be at least 6 characters long.' }),
 });
@@ -29,6 +30,7 @@ export function SignupForm() {
     resolver: zodResolver(formSchema),
     defaultValues: {
       fullName: '',
+      shopName: '',
       email: '',
       password: '',
     },
@@ -44,6 +46,8 @@ export function SignupForm() {
         uid: user.uid,
         email: user.email,
         fullName: values.fullName,
+        shopName: values.shopName,
+        createdAt: serverTimestamp(),
       });
 
       toast({
@@ -76,6 +80,22 @@ export function SignupForm() {
                 <div className="relative">
                   <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input placeholder="John Doe" {...field} className="pl-10" />
+                </div>
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="shopName"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Shop Name</FormLabel>
+              <FormControl>
+                <div className="relative">
+                  <Store className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input placeholder="My Awesome Shop" {...field} className="pl-10" />
                 </div>
               </FormControl>
               <FormMessage />
