@@ -6,7 +6,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useRouter } from 'next/navigation';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { auth, db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
@@ -34,7 +35,48 @@ export function LoginForm() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, values.email, values.password);
+      const userCredential = await signInWithEmailAndPassword(auth, values.email, values.password);
+      const user = userCredential.user;
+
+      if (!user.emailVerified) {
+        toast({
+          variant: 'destructive',
+          title: 'Email Not Verified',
+          description: 'Please verify your email to continue.',
+        });
+        await auth.signOut();
+        setLoading(false);
+        return;
+      }
+
+      // Check if user profile exists, if not, create it
+      const userDocRef = doc(db, 'users', user.uid);
+      const userDocSnap = await getDoc(userDocRef);
+
+      if (!userDocSnap.exists()) {
+        const storedProfile = localStorage.getItem(`userProfile-${user.uid}`);
+        if (storedProfile) {
+          const profileData = JSON.parse(storedProfile);
+          await setDoc(userDocRef, {
+            uid: user.uid,
+            email: profileData.email,
+            fullName: profileData.fullName,
+            shopName: profileData.shopName,
+            createdAt: serverTimestamp(),
+          });
+          localStorage.removeItem(`userProfile-${user.uid}`);
+        } else {
+          // Fallback in case localStorage was cleared
+          await setDoc(userDocRef, {
+            uid: user.uid,
+            email: user.email,
+            fullName: 'New User',
+            shopName: 'New Shop',
+            createdAt: serverTimestamp(),
+          });
+        }
+      }
+
       router.push('/dashboard');
     } catch (error: any) {
       toast({

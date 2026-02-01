@@ -5,9 +5,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useRouter } from 'next/navigation';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db } from '@/lib/firebase';
+import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
@@ -42,20 +41,22 @@ export function SignupForm() {
       const userCredential = await createUserWithEmailAndPassword(auth, values.email, values.password);
       const user = userCredential.user;
 
-      await setDoc(doc(db, 'users', user.uid), {
-        uid: user.uid,
-        email: user.email,
+      // Store profile data for later use after email verification
+      const userProfileData = {
         fullName: values.fullName,
         shopName: values.shopName,
-        createdAt: serverTimestamp(),
-      });
+        email: values.email,
+      };
+      localStorage.setItem(`userProfile-${user.uid}`, JSON.stringify(userProfileData));
+
+      await sendEmailVerification(user);
 
       toast({
-        title: 'Account Created!',
-        description: 'You have been successfully signed up.',
+        title: 'Verification email sent.',
+        description: 'Check inbox or spam.',
       });
 
-      router.push('/dashboard');
+      router.push('/login');
     } catch (error: any) {
       toast({
         variant: 'destructive',

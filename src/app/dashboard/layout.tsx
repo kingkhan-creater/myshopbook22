@@ -24,7 +24,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { toast } = useToast();
 
   useEffect(() => {
-    if (!loading && !user) {
+    if (!loading && (!user || !user.emailVerified)) {
       router.replace('/login');
     }
   }, [user, loading, router]);
