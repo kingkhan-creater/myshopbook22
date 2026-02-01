@@ -6,7 +6,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useRouter } from 'next/navigation';
 import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { auth, db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
@@ -41,8 +42,14 @@ export function SignupForm() {
       const userCredential = await createUserWithEmailAndPassword(auth, values.email, values.password);
       const user = userCredential.user;
 
-      // The user's profile document will be created on their first successful login
-      // after they have verified their email address.
+      // Create the user's profile document in Firestore immediately after signup
+      await setDoc(doc(db, 'users', user.uid), {
+        uid: user.uid,
+        email: values.email,
+        fullName: values.fullName,
+        shopName: values.shopName,
+        createdAt: serverTimestamp(),
+      });
 
       await sendEmailVerification(user);
 
