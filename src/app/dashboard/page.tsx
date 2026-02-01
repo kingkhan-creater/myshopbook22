@@ -3,13 +3,14 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { db } from '@/lib/firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 
 interface UserProfile {
   fullName: string;
   email: string;
+  shopName?: string;
 }
 
 export default function DashboardPage() {
@@ -18,26 +19,42 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function fetchUserProfile() {
+    async function fetchOrCreateUserProfile() {
       if (user) {
         setLoading(true);
+        const docRef = doc(db, 'users', user.uid);
         try {
-          const docRef = doc(db, 'users', user.uid);
           const docSnap = await getDoc(docRef);
           if (docSnap.exists()) {
             setUserProfile(docSnap.data() as UserProfile);
           } else {
-            console.log('No such user profile document!');
+            // The user document doesn't exist, let's create it.
+            const newProfileData = {
+              uid: user.uid,
+              fullName: user.displayName || 'User',
+              email: user.email,
+              shopName: 'ShopBookPro',
+              createdAt: serverTimestamp(),
+            };
+
+            await setDoc(docRef, newProfileData);
+            
+            // Set the profile in state for immediate UI update
+            setUserProfile({
+                fullName: newProfileData.fullName,
+                email: newProfileData.email!,
+                shopName: newProfileData.shopName,
+            });
           }
         } catch (error) {
-          console.error("Error fetching user profile:", error);
+          console.error("Error fetching or creating user profile:", error);
         } finally {
           setLoading(false);
         }
       }
     }
 
-    fetchUserProfile();
+    fetchOrCreateUserProfile();
   }, [user]);
 
   return (
