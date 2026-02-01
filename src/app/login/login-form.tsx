@@ -56,8 +56,6 @@ export function LoginForm() {
       const userDocSnap = await getDoc(userDocRef);
 
       if (!userDocSnap.exists()) {
-        // Since we can't pass signup data, we create a profile with default values.
-        // This data would ideally be collected in an onboarding step after first login.
         await setDoc(userDocRef, {
           uid: user.uid,
           email: user.email,
@@ -69,10 +67,11 @@ export function LoginForm() {
 
       router.push('/dashboard');
     } catch (error: any) {
+      console.error("Login Error:", error.code, error.message);
       toast({
         variant: 'destructive',
-        title: 'Authentication Failed',
-        description: 'The email or password you entered is incorrect.',
+        title: error.code || 'Authentication Failed',
+        description: error.message || 'The email or password you entered is incorrect.',
       });
     } finally {
       setLoading(false);

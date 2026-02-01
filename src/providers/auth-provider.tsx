@@ -16,7 +16,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        // Force a reload of the user's profile to get the latest state
+        // This is crucial for reflecting email verification status immediately.
+        await user.reload();
+      }
       setUser(user);
       setLoading(false);
     });
