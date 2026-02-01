@@ -53,7 +53,7 @@ export function SignupForm() {
 
       toast({
         title: 'Verification email sent.',
-        description: 'Check inbox or spam.',
+        description: 'Please verify your email and then log in.',
       });
 
       router.push('/login');

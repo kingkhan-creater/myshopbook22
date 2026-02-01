@@ -38,13 +38,15 @@ export function LoginForm() {
       const userCredential = await signInWithEmailAndPassword(auth, values.email, values.password);
       const user = userCredential.user;
 
+      // Reload the user's state to get the latest emailVerified status
+      await user.reload();
+
       if (!user.emailVerified) {
         toast({
           variant: 'destructive',
           title: 'Email Not Verified',
           description: 'Please verify your email to continue.',
         });
-        await auth.signOut();
         setLoading(false);
         return;
       }
