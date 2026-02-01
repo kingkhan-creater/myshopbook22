@@ -38,9 +38,9 @@ export function LoginForm() {
       const userCredential = await signInWithEmailAndPassword(auth, values.email, values.password);
       const user = userCredential.user;
 
-      // Reload the user's state to get the latest emailVerified status
+      // Force a reload of the user's profile to get the latest emailVerified state
       await user.reload();
-
+      
       if (!user.emailVerified) {
         toast({
           variant: 'destructive',
@@ -51,32 +51,20 @@ export function LoginForm() {
         return;
       }
 
-      // Check if user profile exists, if not, create it
+      // Check if user profile exists in Firestore, if not, create it
       const userDocRef = doc(db, 'users', user.uid);
       const userDocSnap = await getDoc(userDocRef);
 
       if (!userDocSnap.exists()) {
-        const storedProfile = localStorage.getItem(`userProfile-${user.uid}`);
-        if (storedProfile) {
-          const profileData = JSON.parse(storedProfile);
-          await setDoc(userDocRef, {
-            uid: user.uid,
-            email: profileData.email,
-            fullName: profileData.fullName,
-            shopName: profileData.shopName,
-            createdAt: serverTimestamp(),
-          });
-          localStorage.removeItem(`userProfile-${user.uid}`);
-        } else {
-          // Fallback in case localStorage was cleared
-          await setDoc(userDocRef, {
-            uid: user.uid,
-            email: user.email,
-            fullName: 'New User',
-            shopName: 'New Shop',
-            createdAt: serverTimestamp(),
-          });
-        }
+        // Since we can't pass signup data, we create a profile with default values.
+        // This data would ideally be collected in an onboarding step after first login.
+        await setDoc(userDocRef, {
+          uid: user.uid,
+          email: user.email,
+          fullName: 'New User', // Placeholder
+          shopName: 'My Shop',   // Placeholder
+          createdAt: serverTimestamp(),
+        });
       }
 
       router.push('/dashboard');

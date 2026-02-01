@@ -41,28 +41,32 @@ export function SignupForm() {
       const userCredential = await createUserWithEmailAndPassword(auth, values.email, values.password);
       const user = userCredential.user;
 
-      // Store profile data for later use after email verification
-      const userProfileData = {
-        fullName: values.fullName,
-        shopName: values.shopName,
-        email: values.email,
-      };
-      localStorage.setItem(`userProfile-${user.uid}`, JSON.stringify(userProfileData));
+      // The user's profile document will be created on their first successful login
+      // after they have verified their email address.
 
       await sendEmailVerification(user);
 
       toast({
         title: 'Verification email sent.',
-        description: 'Please verify your email and then log in.',
+        description: 'Please check your inbox or spam, then log in to continue.',
       });
 
       router.push('/login');
     } catch (error: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Uh oh! Something went wrong.',
-        description: error.message || 'There was a problem with your request.',
-      });
+      // Handle common errors like email-already-in-use
+      if (error.code === 'auth/email-already-in-use') {
+        toast({
+          variant: 'destructive',
+          title: 'Signup Failed',
+          description: 'This email address is already in use.',
+        });
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Uh oh! Something went wrong.',
+          description: error.message || 'There was a problem with your request.',
+        });
+      }
     } finally {
       setLoading(false);
     }
