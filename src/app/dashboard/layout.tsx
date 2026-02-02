@@ -4,7 +4,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/logo';
-import { Loader2, LogOut, User as UserIcon } from 'lucide-react';
+import { Loader2, LogOut, User as UserIcon, Users } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,6 +17,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useEffect, useState, useRef } from 'react';
 import { auth } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
+import Link from 'next/link';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -138,7 +139,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-10 w-10 rounded-full">
                 <Avatar className="h-10 w-10 border-2 border-primary">
-                  <AvatarImage src={photoURL || ''} alt="Profile Photo" />
+                  <AvatarImage src={photoURL || user.photoURL || ''} alt="Profile Photo" />
                   <AvatarFallback className="bg-primary text-primary-foreground">
                     {getInitials(user.email)}
                   </AvatarFallback>
@@ -148,17 +149,24 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <DropdownMenuContent className="w-56" align="end" forceMount>
               <DropdownMenuLabel className="font-normal">
                 <div className="flex flex-col space-y-1">
-                  <p className="text-sm font-medium leading-none">My Account</p>
+                  <p className="text-sm font-medium leading-none">{user.displayName || 'My Account'}</p>
                   <p className="text-xs leading-none text-muted-foreground">
                     {user.email}
                   </p>
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
+               <DropdownMenuItem asChild className="cursor-pointer">
+                 <Link href="/dashboard/friends">
+                    <Users className="mr-2 h-4 w-4" />
+                    <span>Friends</span>
+                 </Link>
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={handlePhotoUploadClick} className="cursor-pointer">
                 <UserIcon className="mr-2 h-4 w-4" />
                 <span>Change Photo</span>
               </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleLogout} className="cursor-pointer">
                 <LogOut className="mr-2 h-4 w-4" />
                 <span>Log out</span>
