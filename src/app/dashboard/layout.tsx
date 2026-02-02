@@ -71,8 +71,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       const img = document.createElement("img");
       img.onload = () => {
         const canvas = document.createElement("canvas");
-        const MAX_WIDTH = 512;
-        const MAX_HEIGHT = 512;
+        const MAX_WIDTH = 256;
+        const MAX_HEIGHT = 256;
         let width = img.width;
         let height = img.height;
 
@@ -93,7 +93,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         if (!ctx) return;
 
         ctx.drawImage(img, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
 
         try {
           localStorage.setItem(`profilePhoto_${user.uid}`, dataUrl);
