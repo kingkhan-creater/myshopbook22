@@ -12,11 +12,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, User, Mail, Lock, Store } from 'lucide-react';
+import { Loader2, User, Mail, Lock, Store, Phone } from 'lucide-react';
 
 const formSchema = z.object({
   fullName: z.string().min(2, { message: 'Full name must be at least 2 characters.' }),
-  shopName: z.string().min(2, { message: 'Shop name must be at least 2 characters.' }),
+  shopName: z.string().optional(),
+  phoneNumber: z.string().optional(),
   email: z.string().email({ message: 'Please enter a valid email address.' }),
   password: z.string().min(6, { message: 'Password must be at least 6 characters long.' }),
 });
@@ -31,6 +32,7 @@ export function SignupForm() {
     defaultValues: {
       fullName: '',
       shopName: '',
+      phoneNumber: '',
       email: '',
       password: '',
     },
@@ -42,14 +44,23 @@ export function SignupForm() {
       const userCredential = await createUserWithEmailAndPassword(auth, values.email, values.password);
       const user = userCredential.user;
 
-      // Create the user's profile document in Firestore immediately after signup
-      await setDoc(doc(db, 'users', user.uid), {
+      const userProfile: { [key: string]: any } = {
         uid: user.uid,
         email: values.email,
         fullName: values.fullName,
-        shopName: values.shopName,
         createdAt: serverTimestamp(),
-      });
+      };
+
+      if (values.shopName) {
+        userProfile.shopName = values.shopName;
+      }
+      
+      if (values.phoneNumber) {
+        userProfile.phoneNumber = values.phoneNumber;
+      }
+
+      // Create the user's profile document in Firestore immediately after signup
+      await setDoc(doc(db, 'users', user.uid), userProfile);
 
       await sendEmailVerification(user);
 
@@ -103,11 +114,27 @@ export function SignupForm() {
           name="shopName"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Shop Name</FormLabel>
+              <FormLabel>Shop Name (Optional)</FormLabel>
               <FormControl>
                 <div className="relative">
                   <Store className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input placeholder="My Awesome Shop" {...field} className="pl-10" />
+                </div>
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="phoneNumber"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Phone Number (Optional)</FormLabel>
+              <FormControl>
+                <div className="relative">
+                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input placeholder="e.g., +1 555-555-5555" {...field} className="pl-10" />
                 </div>
               </FormControl>
               <FormMessage />
