@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, User, Mail, Lock, Store, Phone } from 'lucide-react';
+import { Loader2, User, Mail, Lock, Store, Phone, Camera } from 'lucide-react';
 
 const formSchema = z.object({
   fullName: z.string().min(2, { message: 'Full name must be at least 2 characters.' }),
@@ -24,6 +24,7 @@ const formSchema = z.object({
 
 export function SignupForm() {
   const [loading, setLoading] = useState(false);
+  const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null);
   const router = useRouter();
   const { toast } = useToast();
 
@@ -38,11 +39,26 @@ export function SignupForm() {
     },
   });
 
+  const handlePhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPhotoDataUrl(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setLoading(true);
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, values.email, values.password);
       const user = userCredential.user;
+
+      if (photoDataUrl) {
+        localStorage.setItem(`profilePhoto_${user.uid}`, photoDataUrl);
+      }
 
       const userProfile: { [key: string]: any } = {
         uid: user.uid,
@@ -59,7 +75,6 @@ export function SignupForm() {
         userProfile.phoneNumber = values.phoneNumber;
       }
 
-      // Create the user's profile document in Firestore immediately after signup
       await setDoc(doc(db, 'users', user.uid), userProfile);
 
       await sendEmailVerification(user);
@@ -71,7 +86,6 @@ export function SignupForm() {
 
       router.push('/login');
     } catch (error: any) {
-      // Handle common errors like email-already-in-use
       if (error.code === 'auth/email-already-in-use') {
         toast({
           variant: 'destructive',
@@ -173,6 +187,16 @@ export function SignupForm() {
             </FormItem>
           )}
         />
+        <FormItem>
+          <FormLabel>Profile Photo (Optional)</FormLabel>
+          <FormControl>
+            <div className="relative">
+              <Camera className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input type="file" accept="image/*" onChange={handlePhotoChange} className="pl-10" />
+            </div>
+          </FormControl>
+          <FormMessage />
+        </FormItem>
         <Button type="submit" className="w-full" disabled={loading}>
           {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           Sign up

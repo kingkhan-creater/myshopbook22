@@ -4,7 +4,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/logo';
-import { Loader2, LogOut } from 'lucide-react';
+import { Loader2, LogOut, User as UserIcon } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,8 +13,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { useEffect } from 'react';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { useEffect, useState, useRef } from 'react';
 import { auth } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 
@@ -22,10 +22,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { user, loading } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
+  const [photoURL, setPhotoURL] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!loading && (!user || !user.emailVerified)) {
       router.replace('/login');
+    }
+    if (user) {
+      const storedPhoto = localStorage.getItem(`profilePhoto_${user.uid}`);
+      if (storedPhoto) {
+        setPhotoURL(storedPhoto);
+      }
     }
   }, [user, loading, router]);
 
@@ -43,6 +51,27 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         title: 'Logout Failed',
         description: 'There was a problem logging you out.',
       });
+    }
+  };
+
+  const handlePhotoUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handlePhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file && user) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        localStorage.setItem(`profilePhoto_${user.uid}`, result);
+        setPhotoURL(result);
+        toast({
+          title: 'Photo Updated',
+          description: 'Your profile photo has been updated on this device.',
+        });
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -68,6 +97,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-10 w-10 rounded-full">
                 <Avatar className="h-10 w-10 border-2 border-primary">
+                  <AvatarImage src={photoURL || ''} alt="Profile Photo" />
                   <AvatarFallback className="bg-primary text-primary-foreground">
                     {getInitials(user.email)}
                   </AvatarFallback>
@@ -84,6 +114,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handlePhotoUploadClick} className="cursor-pointer">
+                <UserIcon className="mr-2 h-4 w-4" />
+                <span>Change Photo</span>
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={handleLogout} className="cursor-pointer">
                 <LogOut className="mr-2 h-4 w-4" />
                 <span>Log out</span>
@@ -92,7 +126,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </DropdownMenu>
         </div>
       </header>
-      <main className="flex-1">{children}</main>
+      <main className="flex-1">
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handlePhotoChange}
+          className="hidden"
+          accept="image/*"
+        />
+        {children}
+      </main>
     </div>
   );
 }
