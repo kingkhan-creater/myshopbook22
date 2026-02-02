@@ -49,7 +49,7 @@ export default function ChatPage() {
   const { toast } = useToast();
 
   const peerId = params.peerId as string;
-  const chatId = useMemo(() => user ? createChatId(user.uid, peerId) : '', [user, peerId]);
+  const chatId = useMemo(() => (user ? createChatId(user.uid, peerId) : null), [user, peerId]);
 
   const [peerProfile, setPeerProfile] = useState<PublicUserProfile | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -67,20 +67,22 @@ export default function ChatPage() {
     scrollToBottom();
   }, [messages]);
 
-  // Fetch peer profile and check friendship
+  // Combined effect for setting up the chat session
   useEffect(() => {
-    if (!user || !peerId) return;
+    if (!user || !peerId || !chatId) {
+      return;
+    }
 
-    const fetchInitialData = async () => {
+    let unsubscribe = () => {};
+
+    const setupChat = async () => {
       setLoading(true);
       try {
         // 1. Check friendship status
         const friendshipRef = doc(db, 'friendships', createChatId(user.uid, peerId));
         const friendshipSnap = await getDoc(friendshipRef);
 
-        if (friendshipSnap.exists() && friendshipSnap.data().status === 'accepted') {
-          setIsFriend(true);
-        } else {
+        if (!friendshipSnap.exists() || friendshipSnap.data().status !== 'accepted') {
           setIsFriend(false);
           toast({
             variant: 'destructive',
@@ -90,7 +92,8 @@ export default function ChatPage() {
           router.replace('/dashboard/friends');
           return;
         }
-
+        setIsFriend(true);
+        
         // 2. Fetch peer's public profile
         const userDocRef = doc(db, 'publicUsers', peerId);
         const userDocSnap = await getDoc(userDocRef);
@@ -106,8 +109,38 @@ export default function ChatPage() {
           throw new Error('Peer user profile not found.');
         }
 
+        // 3. Ensure chat document exists before listening for messages
+        const chatRef = doc(db, 'chats', chatId);
+        const chatSnap = await getDoc(chatRef);
+        if (!chatSnap.exists()) {
+          await setDoc(chatRef, {
+            members: [user.uid, peerId],
+            createdAt: serverTimestamp(),
+            lastMessage: "",
+            lastMessageAt: null,
+          });
+        }
+
+        // 4. Attach listener for messages (now safe to do)
+        const messagesQuery = query(
+          collection(db, 'chats', chatId, 'messages'),
+          orderBy('createdAt', 'asc')
+        );
+
+        unsubscribe = onSnapshot(messagesQuery, (snapshot) => {
+          const newMessages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
+          setMessages(newMessages);
+        }, (error) => {
+          console.error("Error listening to messages:", error);
+          toast({
+            variant: 'destructive',
+            title: 'Connection Error',
+            description: 'Could not listen for new messages. This may be a permission issue.',
+          });
+        });
+
       } catch (error: any) {
-        console.error("Error fetching chat data:", error);
+        console.error("Error setting up chat:", error);
         toast({
           variant: 'destructive',
           title: 'Error',
@@ -119,33 +152,13 @@ export default function ChatPage() {
       }
     };
 
-    fetchInitialData();
-  }, [user, peerId, router, toast]);
+    setupChat();
 
-  // Set up messages listener
-  useEffect(() => {
-    if (!chatId || !isFriend) return;
+    return () => {
+      unsubscribe();
+    };
+  }, [user, peerId, chatId, router, toast]);
 
-    const messagesQuery = query(
-      collection(db, 'chats', chatId, 'messages'),
-      orderBy('createdAt', 'asc')
-    );
-
-    const unsubscribe = onSnapshot(messagesQuery, (snapshot) => {
-      const newMessages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
-      setMessages(newMessages);
-    }, (error) => {
-      console.error("Error listening to messages:", error);
-      toast({
-        variant: 'destructive',
-        title: 'Connection Error',
-        description: 'Could not listen for new messages.',
-      });
-    });
-
-    return () => unsubscribe();
-  }, [chatId, isFriend, toast]);
-  
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !chatId || newMessage.trim() === '') return;
@@ -201,8 +214,8 @@ export default function ChatPage() {
     );
   }
   
-  if (!isFriend) {
-    return null; // Or a message saying not friends
+  if (!isFriend && !loading) {
+    return null; // Or a message saying not friends, while redirecting
   }
 
   return (
