@@ -14,6 +14,7 @@ import {
   onSnapshot,
   serverTimestamp,
   Timestamp,
+  updateDoc,
 } from 'firebase/firestore';
 import { useRouter, useParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -109,17 +110,12 @@ export default function ChatPage() {
           throw new Error('Peer user profile not found.');
         }
 
-        // 3. Ensure chat document exists before listening for messages
+        // 3. CRITICAL FIX: Ensure chat document exists before listening for messages.
+        // This setDoc with merge is idempotent and satisfies security rules for create/update.
+        // It prevents a permission error when the onSnapshot listener for the 'messages'
+        // subcollection tries to check the parent document's existence.
         const chatRef = doc(db, 'chats', chatId);
-        const chatSnap = await getDoc(chatRef);
-        if (!chatSnap.exists()) {
-          await setDoc(chatRef, {
-            members: [user.uid, peerId],
-            createdAt: serverTimestamp(),
-            lastMessage: "",
-            lastMessageAt: null,
-          });
-        }
+        await setDoc(chatRef, { members: [user.uid, peerId] }, { merge: true });
 
         // 4. Attach listener for messages (now safe to do)
         const messagesQuery = query(
@@ -179,12 +175,20 @@ export default function ChatPage() {
 
       // 2. Update the main chat document (for chat list previews)
       const chatRef = doc(db, 'chats', chatId);
-      await setDoc(chatRef, {
+      const chatSnap = await getDoc(chatRef);
+      
+      const updateData: { [key: string]: any } = {
           members: [user.uid, peerId],
           lastMessage: messageText,
           lastMessageAt: serverTimestamp(),
-        }, { merge: true }
-      );
+      };
+      
+      // If the chat document was just created, it might not have a `createdAt` field yet.
+      if (!chatSnap.exists() || !chatSnap.data()?.createdAt) {
+          updateData.createdAt = serverTimestamp();
+      }
+
+      await setDoc(chatRef, updateData, { merge: true });
       
     } catch (error) {
       console.error("Error sending message:", error);
