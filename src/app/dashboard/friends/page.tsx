@@ -22,11 +22,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { UserPlus, UserCheck, UserX } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
-interface UserProfile {
+interface PublicUserProfile {
   uid: string;
   fullName: string;
-  email: string;
-  photoURL?: string;
+  shopName?: string;
+  photoURL?: string; // This comes from local storage, not firestore
 }
 
 interface Friendship {
@@ -43,7 +43,7 @@ const createFriendshipId = (uid1: string, uid2: string) => {
 export default function FriendsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
+  const [allUsers, setAllUsers] = useState<PublicUserProfile[]>([]);
   const [friendships, setFriendships] = useState<Friendship[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -51,13 +51,13 @@ export default function FriendsPage() {
     if (!user) return;
     setLoading(true);
     try {
-      // Fetch all users
-      const usersQuery = query(collection(db, 'users'));
+      // Fetch all public user profiles for discovery
+      const usersQuery = query(collection(db, 'publicUsers'));
       const usersSnapshot = await getDocs(usersQuery);
-      const usersData = usersSnapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile));
+      const usersData = usersSnapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as PublicUserProfile));
       setAllUsers(usersData);
 
-      // Fetch friendships
+      // Fetch friendships related to the current user
       const friendshipsQuery = query(collection(db, 'friendships'), where('users', 'array-contains', user.uid));
       const friendshipsSnapshot = await getDocs(friendshipsQuery);
       const friendshipsData = friendshipsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Friendship));
@@ -105,7 +105,7 @@ export default function FriendsPage() {
     return { findFriendsList, pendingRequests, acceptedFriends };
   }, [user, allUsers, friendships]);
   
-  const handleSendRequest = async (targetUser: UserProfile) => {
+  const handleSendRequest = async (targetUser: PublicUserProfile) => {
     if (!user) return;
     const friendshipId = createFriendshipId(user.uid, targetUser.uid);
     const friendshipRef = doc(db, 'friendships', friendshipId);
@@ -171,7 +171,7 @@ export default function FriendsPage() {
                         </Avatar>
                         <div>
                           <p className="font-semibold">{u.fullName}</p>
-                          <p className="text-sm text-muted-foreground">{u.email}</p>
+                          {u.shopName && <p className="text-sm text-muted-foreground">{u.shopName}</p>}
                         </div>
                       </div>
                       <Button size="sm" onClick={() => handleSendRequest(u)}>
@@ -199,7 +199,7 @@ export default function FriendsPage() {
                         </Avatar>
                         <div>
                           <p className="font-semibold">{req.otherUser.fullName}</p>
-                          <p className="text-sm text-muted-foreground">{req.otherUser.email}</p>
+                          {req.otherUser.shopName && <p className="text-sm text-muted-foreground">{req.otherUser.shopName}</p>}
                         </div>
                       </div>
                       <div className="flex gap-2">
@@ -234,7 +234,7 @@ export default function FriendsPage() {
                         </Avatar>
                         <div>
                           <p className="font-semibold">{friend.otherUser.fullName}</p>
-                          <p className="text-sm text-muted-foreground">{friend.otherUser.email}</p>
+                           {friend.otherUser.shopName && <p className="text-sm text-muted-foreground">{friend.otherUser.shopName}</p>}
                         </div>
                       </div>
                       <Button variant="secondary" disabled>

@@ -9,6 +9,12 @@ service cloud.firestore {
         && request.auth.uid == userId;
     }
 
+    // Public user profiles for discovery
+    match /publicUsers/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
     // Friendships: Users in the `userIds` array can read. Creation and updates
     // are also restricted to participants.
     match /friendships/{friendshipId} {

@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useRouter } from 'next/navigation';
-import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
+import { createUserWithEmailAndPassword, sendEmailVerification, updateProfile } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
@@ -87,32 +87,35 @@ export function SignupForm() {
       const userCredential = await createUserWithEmailAndPassword(auth, values.email, values.password);
       const user = userCredential.user;
 
+      await updateProfile(user, { displayName: values.fullName });
+      
       if (photoDataUrl) {
         try {
           localStorage.setItem(`profilePhoto_${user.uid}`, photoDataUrl);
         } catch (error) {
-          // Non-critical error, so we just log it and don't bother the user with a toast
-          // during the signup success flow.
           console.error("Failed to save photo to local storage during signup:", error);
         }
       }
 
+      // Create the private user profile document
       const userProfile: { [key: string]: any } = {
         uid: user.uid,
         email: values.email,
         fullName: values.fullName,
         createdAt: serverTimestamp(),
       };
-
-      if (values.shopName) {
-        userProfile.shopName = values.shopName;
-      }
-      
-      if (values.phoneNumber) {
-        userProfile.phoneNumber = values.phoneNumber;
-      }
-
+      if (values.shopName) userProfile.shopName = values.shopName;
+      if (values.phoneNumber) userProfile.phoneNumber = values.phoneNumber;
       await setDoc(doc(db, 'users', user.uid), userProfile);
+
+      // Create the public user profile document for discovery
+      const publicUserProfile: { [key: string]: any } = {
+        fullName: values.fullName,
+        createdAt: serverTimestamp(),
+      };
+      if (values.shopName) publicUserProfile.shopName = values.shopName;
+      await setDoc(doc(db, 'publicUsers', user.uid), publicUserProfile);
+
 
       await sendEmailVerification(user);
 
