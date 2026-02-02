@@ -41,13 +41,44 @@ export function SignupForm() {
 
   const handlePhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPhotoDataUrl(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+    if (!file) {
+      return;
     }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      if (!e.target?.result) return;
+      const img = document.createElement("img");
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const MAX_WIDTH = 512;
+        const MAX_HEIGHT = 512;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        
+        ctx.drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+        setPhotoDataUrl(dataUrl);
+      };
+      img.src = e.target.result as string;
+    };
+    reader.readAsDataURL(file);
   };
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
@@ -57,7 +88,13 @@ export function SignupForm() {
       const user = userCredential.user;
 
       if (photoDataUrl) {
-        localStorage.setItem(`profilePhoto_${user.uid}`, photoDataUrl);
+        try {
+          localStorage.setItem(`profilePhoto_${user.uid}`, photoDataUrl);
+        } catch (error) {
+          // Non-critical error, so we just log it and don't bother the user with a toast
+          // during the signup success flow.
+          console.error("Failed to save photo to local storage during signup:", error);
+        }
       }
 
       const userProfile: { [key: string]: any } = {

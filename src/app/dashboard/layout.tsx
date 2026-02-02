@@ -60,19 +60,60 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const handlePhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file && user) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const result = reader.result as string;
-        localStorage.setItem(`profilePhoto_${user.uid}`, result);
-        setPhotoURL(result);
-        toast({
-          title: 'Photo Updated',
-          description: 'Your profile photo has been updated on this device.',
-        });
-      };
-      reader.readAsDataURL(file);
+    if (!file || !user) {
+      return;
     }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      if (!e.target?.result) return;
+      const img = document.createElement("img");
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const MAX_WIDTH = 512;
+        const MAX_HEIGHT = 512;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+
+        ctx.drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+
+        try {
+          localStorage.setItem(`profilePhoto_${user.uid}`, dataUrl);
+          setPhotoURL(dataUrl);
+          toast({
+            title: "Photo Updated",
+            description: "Your profile photo has been updated on this device.",
+          });
+        } catch (error) {
+          toast({
+            variant: "destructive",
+            title: "Could not save photo",
+            description:
+              "The photo is too large to be saved. Please choose a smaller file.",
+          });
+          console.error("Failed to save photo to local storage:", error);
+        }
+      };
+      img.src = e.target.result as string;
+    };
+    reader.readAsDataURL(file);
   };
 
   const getInitials = (email: string | null | undefined) => {
