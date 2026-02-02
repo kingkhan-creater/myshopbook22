@@ -22,15 +22,13 @@ export default function DashboardPage() {
     async function fetchUserProfile() {
       if (user) {
         setLoading(true);
-        // Note: Your request mentioned the 'user' collection, but the existing project uses 'users'.
-        // I am using 'users' to maintain consistency with your Firestore rules and signup logic.
         const docRef = doc(db, 'users', user.uid);
         try {
           const docSnap = await getDoc(docRef);
           if (docSnap.exists()) {
             setUserProfile(docSnap.data() as UserProfile);
           } else {
-            // As requested, if the document isn't found, we'll show a generic welcome message.
+            // If the document isn't found, show a generic welcome message as requested.
             setUserProfile(null);
             console.warn(`User profile document not found for uid: ${user.uid}`);
           }
