@@ -1,14 +1,13 @@
 
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { db } from '@/lib/firebase';
 import {
   collection,
   query,
   where,
-  onSnapshot,
   doc,
   setDoc,
   updateDoc,
@@ -20,14 +19,14 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
-import { UserPlus, UserCheck, UserX, Clock } from 'lucide-react';
+import { UserPlus, UserCheck, UserX } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 interface UserProfile {
   uid: string;
   fullName: string;
   email: string;
-  photoURL?: string; // Assuming photoURL might exist from previous work
+  photoURL?: string;
 }
 
 interface Friendship {
@@ -48,37 +47,37 @@ export default function FriendsPage() {
   const [friendships, setFriendships] = useState<Friendship[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (!user) {
-      setLoading(false);
-      return;
-    }
-
-    const usersQuery = query(collection(db, 'users'));
-    const usersUnsubscribe = onSnapshot(usersQuery, (snapshot) => {
-      const usersData = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile));
+  const fetchData = useCallback(async () => {
+    if (!user) return;
+    setLoading(true);
+    try {
+      // Fetch all users
+      const usersQuery = query(collection(db, 'users'));
+      const usersSnapshot = await getDocs(usersQuery);
+      const usersData = usersSnapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile));
       setAllUsers(usersData);
-      setLoading(false);
-    }, (error) => {
-      console.error("Error fetching users:", error);
-      toast({ variant: 'destructive', title: 'Error', description: 'Could not fetch user data.' });
-      setLoading(false);
-    });
 
-    const friendshipsQuery = query(collection(db, 'friendships'), where('users', 'array-contains', user.uid));
-    const friendshipsUnsubscribe = onSnapshot(friendshipsQuery, (snapshot) => {
-      const friendshipsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Friendship));
+      // Fetch friendships
+      const friendshipsQuery = query(collection(db, 'friendships'), where('users', 'array-contains', user.uid));
+      const friendshipsSnapshot = await getDocs(friendshipsQuery);
+      const friendshipsData = friendshipsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Friendship));
       setFriendships(friendshipsData);
-    }, (error) => {
-      console.error("Error fetching friendships:", error);
-      toast({ variant: 'destructive', title: 'Error', description: 'Could not fetch friendships data.' });
-    });
 
-    return () => {
-      usersUnsubscribe();
-      friendshipsUnsubscribe();
-    };
+    } catch (error: any) {
+      console.error("Error fetching data:", error);
+      toast({ 
+        variant: 'destructive', 
+        title: 'Error', 
+        description: `Could not fetch data. ${error.message}`
+      });
+    } finally {
+      setLoading(false);
+    }
   }, [user, toast]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const { findFriendsList, pendingRequests, acceptedFriends } = useMemo(() => {
     if (!user || allUsers.length === 0) {
@@ -119,6 +118,7 @@ export default function FriendsPage() {
         createdAt: serverTimestamp(),
       });
       toast({ title: 'Success', description: `Friend request sent to ${targetUser.fullName}.` });
+      fetchData(); // Refetch data after sending request
     } catch (error) {
       console.error("Error sending friend request:", error);
       toast({ variant: 'destructive', title: 'Error', description: 'Could not send friend request.' });
@@ -130,13 +130,14 @@ export default function FriendsPage() {
     try {
       await updateDoc(friendshipRef, { status });
       toast({ title: 'Success', description: `Request has been ${status}.` });
+      fetchData(); // Refetch data after updating request
     } catch (error) {
       console.error("Error updating friend request:", error);
       toast({ variant: 'destructive', title: 'Error', description: 'Could not update friend request.' });
     }
   };
   
-  const getInitials = (name: string) => name.substring(0, 2).toUpperCase();
+  const getInitials = (name: string) => (name || '').substring(0, 2).toUpperCase();
 
   return (
     <div className="container mx-auto p-4 sm:p-6 lg:p-8">
