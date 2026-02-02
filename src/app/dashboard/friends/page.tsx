@@ -19,8 +19,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
-import { UserPlus, UserCheck, UserX } from 'lucide-react';
+import { UserPlus, UserCheck, UserX, MessageSquare } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import Link from 'next/link';
 
 interface PublicUserProfile {
   uid: string;
@@ -96,6 +97,12 @@ export default function FriendsPage() {
     const enrichedFriendships = friendships.map(f => {
       const otherUserId = f.users.find(uid => uid !== currentUserUid);
       const otherUser = allUsers.find(u => u.uid === otherUserId);
+      if (otherUser) {
+        const storedPhoto = localStorage.getItem(`profilePhoto_${otherUser.uid}`);
+        if (storedPhoto) {
+          otherUser.photoURL = storedPhoto;
+        }
+      }
       return { ...f, otherUser };
     });
 
@@ -237,8 +244,10 @@ export default function FriendsPage() {
                            {friend.otherUser.shopName && <p className="text-sm text-muted-foreground">{friend.otherUser.shopName}</p>}
                         </div>
                       </div>
-                      <Button variant="secondary" disabled>
-                        <UserCheck className="mr-2 h-4 w-4" /> Friends
+                      <Button asChild>
+                        <Link href={`/dashboard/chat/${friend.otherUser.uid}`}>
+                          <MessageSquare className="mr-2 h-4 w-4" /> Chat
+                        </Link>
                       </Button>
                     </li>
                   ))}
