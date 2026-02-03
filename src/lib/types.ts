@@ -36,3 +36,39 @@ export interface PurchaseBill {
   paymentGiven: number;
   createdAt: Timestamp;
 }
+
+export interface Customer {
+    id: string;
+    name: string;
+    phone?: string;
+    address?: string;
+    totalCredit: number;
+    totalPaid: number;
+    createdAt: Timestamp;
+}
+
+export interface Payment {
+    amount: number;
+    date: Timestamp;
+    method: 'Cash' | 'Card' | 'Online' | 'Other';
+}
+
+export interface CustomerBillItem {
+    itemId: string;
+    itemName: string;
+    qty: number;
+    rate: number;
+}
+
+export interface CustomerBill {
+    id: string;
+    billNumber: string;
+    status: 'OPEN' | 'CLOSED';
+    items: CustomerBillItem[];
+    payments: Payment[];
+    previousBalance: number;
+    totalAmount: number;
+    totalPaid: number;
+    createdAt: Timestamp;
+    updatedAt: Timestamp;
+}
