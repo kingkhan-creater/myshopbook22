@@ -223,7 +223,7 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="flex h-full max-h-[calc(100vh-4rem)] flex-col">
+    <div className="flex h-full max-h-[calc(100vh-4rem)] flex-col bg-background">
       {/* Header */}
       <header className="flex items-center gap-4 border-b bg-background p-3">
         <Button variant="ghost" size="icon" asChild>

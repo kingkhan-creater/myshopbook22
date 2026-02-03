@@ -4,7 +4,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/logo';
-import { Loader2, LogOut, User as UserIcon, Users } from 'lucide-react';
+import { Loader2, LogOut, User as UserIcon, Menu } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,11 +13,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Sheet,
+  SheetContent,
+  SheetTrigger,
+} from '@/components/ui/sheet';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useEffect, useState, useRef } from 'react';
 import { auth } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
-import Link from 'next/link';
+import { DashboardNav } from '@/components/dashboard-nav';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -131,10 +136,40 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="flex min-h-screen w-full flex-col bg-background">
-      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container flex h-16 items-center justify-between">
-          <Logo />
+    <div className="grid min-h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
+      <div className="hidden border-r bg-sidebar md:block">
+        <div className="flex h-full max-h-screen flex-col gap-2">
+          <div className="flex h-16 items-center border-b px-6">
+            <Logo />
+          </div>
+          <div className="flex-1 overflow-auto py-2">
+            <DashboardNav className="px-4 text-sm font-medium" />
+          </div>
+        </div>
+      </div>
+      <div className="flex flex-col">
+        <header className="flex h-16 items-center gap-4 border-b bg-background px-4 lg:px-6">
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon"
+                className="shrink-0 md:hidden"
+              >
+                <Menu className="h-5 w-5" />
+                <span className="sr-only">Toggle navigation menu</span>
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="left" className="flex flex-col bg-sidebar p-0">
+                <div className="flex h-16 items-center border-b px-4">
+                  <Logo />
+                </div>
+              <DashboardNav className="p-4" />
+            </SheetContent>
+          </Sheet>
+          <div className="w-full flex-1">
+            {/* Can add search bar here later */}
+          </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-10 w-10 rounded-full">
@@ -156,13 +191,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-               <DropdownMenuItem asChild className="cursor-pointer">
-                 <Link href="/dashboard/friends">
-                    <Users className="mr-2 h-4 w-4" />
-                    <span>Friends</span>
-                 </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={handlePhotoUploadClick} className="cursor-pointer">
+               <DropdownMenuItem onClick={handlePhotoUploadClick} className="cursor-pointer">
                 <UserIcon className="mr-2 h-4 w-4" />
                 <span>Change Photo</span>
               </DropdownMenuItem>
@@ -173,18 +202,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        </div>
-      </header>
-      <main className="flex-1">
-        <input
+        </header>
+        <main className="flex flex-1 flex-col gap-4 bg-muted/40 overflow-auto">
+          {children}
+        </main>
+         <input
           type="file"
           ref={fileInputRef}
           onChange={handlePhotoChange}
           className="hidden"
           accept="image/*"
         />
-        {children}
-      </main>
+      </div>
     </div>
   );
 }

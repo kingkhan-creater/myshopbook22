@@ -1,82 +1,60 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/use-auth';
-import { db } from '@/lib/firebase';
-import { doc, getDoc } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
+import { Package, Users, Truck, Bell } from 'lucide-react';
+import Link from 'next/link';
 
-interface UserProfile {
-  fullName: string;
-  email: string;
-  shopName?: string;
-}
+const overviewCards = [
+  { title: 'Items', description: 'Manage inventory', icon: Package, href: '/dashboard/items' },
+  { title: 'Customers', description: 'View customers', icon: Users, href: '/dashboard/customers' },
+  { title: 'Suppliers', description: 'Manage suppliers', icon: Truck, href: '/dashboard/suppliers' },
+  { title: 'Reminders', description: 'Track tasks', icon: Bell, href: '/dashboard/reminders' },
+];
 
 export default function DashboardPage() {
   const { user } = useAuth();
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    async function fetchUserProfile() {
-      if (user) {
-        setLoading(true);
-        const docRef = doc(db, 'users', user.uid);
-        try {
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists()) {
-            setUserProfile(docSnap.data() as UserProfile);
-          } else {
-            // If the document isn't found, show a generic welcome message as requested.
-            setUserProfile(null);
-            console.warn(`User profile document not found for uid: ${user.uid}`);
-          }
-        } catch (error) {
-          console.error("Error fetching user profile:", error);
-          setUserProfile(null);
-        } finally {
-          setLoading(false);
-        }
-      }
-    }
-
-    fetchUserProfile();
-  }, [user]);
 
   return (
     <div className="container mx-auto p-4 sm:p-6 lg:p-8">
-      <div className="grid auto-rows-max items-start gap-4 lg:gap-8">
+      <div className="space-y-4">
+        <h1 className="text-3xl font-bold tracking-tight">
+          Welcome, {user?.displayName || 'User'}!
+        </h1>
+        <p className="text-muted-foreground">
+          Here's a quick overview of your shop.
+        </p>
+
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {overviewCards.map((card) => (
+            <Link key={card.title} href={card.href}>
+              <Card className="hover:bg-card/90 hover:shadow-md transition-all">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">{card.title}</CardTitle>
+                  <card.icon className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">...</div>
+                  <p className="text-xs text-muted-foreground">{card.description}</p>
+                </CardContent>
+              </Card>
+            </Link>
+          ))}
+        </div>
+
         <Card>
-          <CardHeader>
-            <CardTitle className="text-3xl font-bold tracking-tight">Dashboard</CardTitle>
-            <CardDescription>
-              A personalized welcome to your ShopBookPro experience.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="space-y-2">
-                <Skeleton className="h-8 w-1/2" />
-                <Skeleton className="h-4 w-1/3" />
-              </div>
-            ) : userProfile ? (
-              <div>
-                <h2 className="text-2xl font-semibold text-primary">
-                  Welcome, {userProfile.fullName}!
-                </h2>
-                <p className="text-muted-foreground">We're glad to have you here.</p>
-              </div>
-            ) : (
-              <div>
-                <h2 className="text-2xl font-semibold text-primary">
-                  Welcome!
-                </h2>
-                <p className="text-muted-foreground">We're glad to have you here.</p>
-              </div>
-            )}
-          </CardContent>
+            <CardHeader>
+                <CardTitle>Recent Activity</CardTitle>
+                <CardDescription>A log of recent activities will be shown here.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <div className="flex flex-col items-center justify-center text-center border-2 border-dashed rounded-lg p-12 min-h-[200px]">
+                    <h3 className="text-lg font-semibold">No Recent Activity</h3>
+                    <p className="text-muted-foreground mt-2">Your recent updates will appear here.</p>
+                </div>
+            </CardContent>
         </Card>
+
       </div>
     </div>
   );
