@@ -223,86 +223,84 @@ export default function ItemsPage() {
                 </CardContent>
             </Card>
 
-            <div className="relative w-full overflow-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Item Name</TableHead>
-                    <TableHead>Stock</TableHead>
-                    <TableHead>Purchase Price</TableHead>
-                    <TableHead>Sale Price</TableHead>
-                    <TableHead>Stock Value</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loading ? (
-                    Array.from({ length: 3 }).map((_, i) => (
-                      <TableRow key={i}>
-                        <TableCell colSpan={7}>
-                            <Skeleton className="h-8 w-full" />
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : items.length > 0 ? (
-                    items.map((item) => (
-                      <TableRow key={item.id}>
-                        <TableCell className="font-medium">{item.name}</TableCell>
-                        <TableCell>{item.stockQty}</TableCell>
-                        <TableCell>${item.purchasePrice.toFixed(2)}</TableCell>
-                        <TableCell>${item.salePrice.toFixed(2)}</TableCell>
-                        <TableCell>${(item.purchasePrice * item.stockQty).toFixed(2)}</TableCell>
-                        <TableCell>
-                          {item.stockQty < 5 ? (
-                             <Badge variant={item.stockQty === 0 ? 'destructive' : 'secondary'}>
-                                {item.stockQty === 0 ? 'Out of Stock' : 'Low Stock'}
-                             </Badge>
-                          ): (
-                            <Badge variant="default">In Stock</Badge>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                            <div className="flex gap-2">
-                                <Button variant="ghost" size="icon" onClick={() => handleEditItem(item)}>
-                                    <Pencil className="h-4 w-4" />
-                                </Button>
-                                <AlertDialog>
-                                    <AlertDialogTrigger asChild>
-                                        <Button variant="ghost" size="icon">
-                                            <Trash2 className="h-4 w-4 text-destructive" />
-                                        </Button>
-                                    </AlertDialogTrigger>
-                                    <AlertDialogContent>
-                                        <AlertDialogHeader>
-                                            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                                            <AlertDialogDescription>
-                                                This action cannot be undone. This will permanently delete the item
-                                                and remove its data from our servers.
-                                            </AlertDialogDescription>
-                                        </AlertDialogHeader>
-                                        <AlertDialogFooter>
-                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                            <AlertDialogAction onClick={() => handleDeleteItem(item.id)}>
-                                                Delete
-                                            </AlertDialogAction>
-                                        </AlertDialogFooter>
-                                    </AlertDialogContent>
-                                </AlertDialog>
-                            </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={7} className="h-24 text-center">
-                        No items found. Get started by adding a new item.
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Item Name</TableHead>
+                  <TableHead>Stock</TableHead>
+                  <TableHead>Purchase Price</TableHead>
+                  <TableHead>Sale Price</TableHead>
+                  <TableHead>Stock Value</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  Array.from({ length: 3 }).map((_, i) => (
+                    <TableRow key={i}>
+                      <TableCell colSpan={7}>
+                          <Skeleton className="h-8 w-full" />
                       </TableCell>
                     </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
+                  ))
+                ) : items.length > 0 ? (
+                  items.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell className="font-medium">{item.name}</TableCell>
+                      <TableCell>{item.stockQty}</TableCell>
+                      <TableCell>${item.purchasePrice.toFixed(2)}</TableCell>
+                      <TableCell>${item.salePrice.toFixed(2)}</TableCell>
+                      <TableCell>${(item.purchasePrice * item.stockQty).toFixed(2)}</TableCell>
+                      <TableCell>
+                        {item.stockQty < 5 ? (
+                           <Badge variant={item.stockQty === 0 ? 'destructive' : 'secondary'}>
+                              {item.stockQty === 0 ? 'Out of Stock' : 'Low Stock'}
+                           </Badge>
+                        ): (
+                          <Badge variant="default">In Stock</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                          <div className="flex gap-2">
+                              <Button variant="ghost" size="icon" onClick={() => handleEditItem(item)}>
+                                  <Pencil className="h-4 w-4" />
+                              </Button>
+                              <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                      <Button variant="ghost" size="icon">
+                                          <Trash2 className="h-4 w-4 text-destructive" />
+                                      </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                      <AlertDialogHeader>
+                                          <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                          <AlertDialogDescription>
+                                              This action cannot be undone. This will permanently delete the item
+                                              and remove its data from our servers.
+                                          </AlertDialogDescription>
+                                      </AlertDialogHeader>
+                                      <AlertDialogFooter>
+                                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                          <AlertDialogAction onClick={() => handleDeleteItem(item.id)}>
+                                              Delete
+                                          </AlertDialogAction>
+                                      </AlertDialogFooter>
+                                  </AlertDialogContent>
+                              </AlertDialog>
+                          </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={7} className="h-24 text-center">
+                      No items found. Get started by adding a new item.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
           </CardContent>
         </Card>
 
