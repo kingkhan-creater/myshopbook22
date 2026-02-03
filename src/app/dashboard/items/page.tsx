@@ -10,7 +10,6 @@ import {
   collection,
   query,
   onSnapshot,
-  addDoc,
   updateDoc,
   deleteDoc,
   doc,
@@ -41,7 +40,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogClose,
 } from '@/components/ui/dialog';
 import {
@@ -58,9 +56,10 @@ import {
 import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
-import { PlusCircle, Pencil, Trash2, Loader2 } from 'lucide-react';
+import { PlusCircle, Pencil, Trash2, Loader2, ShoppingCart, DollarSign } from 'lucide-react';
 import type { Item } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
+import Link from 'next/link';
 
 const itemSchema = z.object({
   name: z.string().min(2, { message: 'Item name is required.' }),
@@ -124,12 +123,6 @@ export default function ItemsPage() {
     return () => unsubscribe();
   }, [user, toast]);
 
-  const handleAddNewItem = () => {
-    setEditingItem(null);
-    form.reset({ name: '', purchasePrice: 0, salePrice: 0, stockQty: 0, supplier: '' });
-    setIsFormOpen(true);
-  };
-
   const handleEditItem = (item: Item) => {
     setEditingItem(item);
     form.reset(item);
@@ -156,31 +149,18 @@ export default function ItemsPage() {
   }
 
   const onSubmit = async (values: ItemFormValues) => {
-    if (!user) return;
+    if (!user || !editingItem) return;
 
     form.control.disabled = true;
 
     try {
-        if (editingItem) {
-            // Update existing item
-            const itemDoc = doc(db, 'users', user.uid, 'items', editingItem.id);
-            await updateDoc(itemDoc, values);
-            toast({
-                title: "Item Updated",
-                description: "Your item has been successfully updated.",
-            });
-        } else {
-            // Add new item
-            const itemsCollection = collection(db, 'users', user.uid, 'items');
-            await addDoc(itemsCollection, {
-                ...values,
-                createdAt: serverTimestamp(),
-            });
-            toast({
-                title: "Item Added",
-                description: "Your new item has been added to the inventory.",
-            });
-        }
+        // Update existing item
+        const itemDoc = doc(db, 'users', user.uid, 'items', editingItem.id);
+        await updateDoc(itemDoc, values);
+        toast({
+            title: "Item Updated",
+            description: "Your item has been successfully updated.",
+        });
         setIsFormOpen(false);
         setEditingItem(null);
     } catch(error) {
@@ -208,9 +188,16 @@ export default function ItemsPage() {
               <CardTitle className="text-3xl font-bold tracking-tight">Available Items</CardTitle>
               <CardDescription>Manage your inventory and view stock levels.</CardDescription>
             </div>
-            <Button onClick={handleAddNewItem}>
-              <PlusCircle className="mr-2 h-4 w-4" /> Add New Item
-            </Button>
+            <div className="flex gap-2">
+                <Button asChild>
+                    <Link href="/dashboard/items/purchase">
+                        <ShoppingCart className="mr-2 h-4 w-4" /> Purchase Items
+                    </Link>
+                </Button>
+                <Button variant="secondary" disabled>
+                    <DollarSign className="mr-2 h-4 w-4" /> Sell Items
+                </Button>
+            </div>
           </CardHeader>
           <CardContent>
             <Card className="mb-4">
@@ -295,7 +282,7 @@ export default function ItemsPage() {
                 ) : (
                   <TableRow>
                     <TableCell colSpan={7} className="h-24 text-center">
-                      No items found. Get started by adding a new item.
+                      No items found. Get started by purchasing some items.
                     </TableCell>
                   </TableRow>
                 )}
@@ -306,9 +293,9 @@ export default function ItemsPage() {
 
         <DialogContent className="sm:max-w-[480px]">
           <DialogHeader>
-            <DialogTitle>{editingItem ? 'Edit Item' : 'Add New Item'}</DialogTitle>
+            <DialogTitle>Edit Item</DialogTitle>
             <DialogDescription>
-              {editingItem ? 'Update the details of your item.' : 'Fill out the form to add a new item to your inventory.'}
+              Update the details of your item.
             </DialogDescription>
           </DialogHeader>
           <Form {...form}>
@@ -386,7 +373,7 @@ export default function ItemsPage() {
                 </DialogClose>
                 <Button type="submit" disabled={form.control.disabled}>
                   {form.control.disabled && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Save Item
+                  Save Changes
                 </Button>
               </DialogFooter>
             </form>
