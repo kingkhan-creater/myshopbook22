@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, Package, Users, Truck, Bell, MessageSquare } from 'lucide-react';
+import { LayoutDashboard, Package, Users, Truck, Bell, MessageSquare, Wallet } from 'lucide-react';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -11,6 +11,7 @@ const navItems = [
   { href: '/dashboard/customers', label: 'Customers', icon: Users },
   { href: '/dashboard/suppliers', label: 'Suppliers', icon: Truck },
   { href: '/dashboard/reminders', label: 'Reminders', icon: Bell },
+  { href: '/dashboard/expenses', label: 'Expenses', icon: Wallet },
   { href: '/dashboard/friends', label: 'Friends & Chat', icon: MessageSquare },
 ];
 
