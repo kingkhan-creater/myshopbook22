@@ -11,17 +11,14 @@ import {
   query,
   onSnapshot,
   updateDoc,
-  deleteDoc,
   doc,
   serverTimestamp,
   orderBy,
-  writeBatch,
   increment,
   addDoc,
   getDocs,
   where,
   limit,
-  getDoc,
   runTransaction,
 } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
@@ -31,7 +28,7 @@ import {
   CardHeader,
   CardTitle,
   CardDescription,
-  CardFooter
+  CardFooter,
 } from '@/components/ui/card';
 import {
   Table,
@@ -52,24 +49,16 @@ import {
   DialogClose,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogHeader,
-    AlertDialogTitle,
-  } from "@/components/ui/alert-dialog"
 import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { PlusCircle, Pencil, Trash2, Loader2, ShoppingCart, DollarSign, UserPlus } from 'lucide-react';
+import { PlusCircle, Pencil, Trash2, Loader2, UserPlus, Users, Store, Languages } from 'lucide-react';
 import type { Item, Customer, CustomerBill, CustomerBillItem, Payment } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
-import Link from 'next/link';
+import { Switch } from '@/components/ui/switch';
+import Image from 'next/image';
 
 const itemSchema = z.object({
   name: z.string().min(2, { message: 'Item name is required.' }),
@@ -78,7 +67,6 @@ const itemSchema = z.object({
   stockQty: z.coerce.number().int().min(0, { message: 'Stock quantity must be a whole number.' }),
   supplier: z.string().optional(),
 });
-
 type ItemFormValues = z.infer<typeof itemSchema>;
 
 const customerSchema = z.object({
@@ -97,18 +85,32 @@ type SaleBillItem = {
     stock: number;
 };
 
+// Represents an item aggregated for customer view
+interface CustomerViewItem {
+  name: string;
+  salePrice: number;
+  stockQty: number;
+  photoUrl?: string;
+  // Contains original item IDs and their current stock
+  sourceItems: { id: string; stock: number }[]; 
+}
+
+
 export default function ItemsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
 
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
+  const [view, setView] = useState<'user' | 'customer'>('user');
+
+  // Dialog states
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
-
-  // States for Sell Dialog
   const [isSellDialogOpen, setIsSellDialogOpen] = useState(false);
   const [isAddCustomerDialogOpen, setIsAddCustomerDialogOpen] = useState(false);
+  
+  // Sell dialog specific states
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loadingCustomers, setLoadingCustomers] = useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
@@ -116,31 +118,15 @@ export default function ItemsPage() {
   const [paymentGiven, setPaymentGiven] = useState(0);
   const [isSavingSale, setIsSavingSale] = useState(false);
 
-  const editItemForm = useForm<ItemFormValues>({
-    resolver: zodResolver(itemSchema),
-  });
+  const form = useForm<ItemFormValues>({ resolver: zodResolver(itemSchema) });
+  const addCustomerForm = useForm<CustomerFormValues>({ resolver: zodResolver(customerSchema) });
 
-  const addCustomerForm = useForm<CustomerFormValues>({
-    resolver: zodResolver(customerSchema),
-    defaultValues: { name: '', phone: '', address: '' },
-  });
-
-  // Fetch Items
+  // Fetch Items in real-time
   useEffect(() => {
-    if (!user) {
-      setLoading(false);
-      return;
-    }
-    const itemsCollection = collection(db, 'users', user.uid, 'items');
-    const q = query(itemsCollection, orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    if (!user) { setLoading(false); return; }
+    const itemsQuery = query(collection(db, 'users', user.uid, 'items'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(itemsQuery, (snapshot) => {
         const itemsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Item));
-        // Client-side sort: out of stock items at the bottom
-        itemsData.sort((a, b) => {
-            if (a.stockQty > 0 && b.stockQty === 0) return -1;
-            if (a.stockQty === 0 && b.stockQty > 0) return 1;
-            return 0; // Keep original (date) order otherwise
-        });
         setItems(itemsData);
         setLoading(false);
     }, (error) => {
@@ -155,34 +141,63 @@ export default function ItemsPage() {
   useEffect(() => {
     if (isSellDialogOpen && user) {
         setLoadingCustomers(true);
-        const custCollection = collection(db, 'users', user.uid, 'customers');
-        const q = query(custCollection, orderBy('name', 'asc'));
-        const unsubscribe = onSnapshot(q, (snapshot) => {
+        const custQuery = query(collection(db, 'users', user.uid, 'customers'), orderBy('name', 'asc'));
+        const unsubscribe = onSnapshot(custQuery, (snapshot) => {
             setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
             setLoadingCustomers(false);
         });
         return () => unsubscribe();
     }
   }, [isSellDialogOpen, user]);
+  
+  // Memoized and sorted item list for display
+  const displayedItems = useMemo(() => {
+    if (view === 'user') {
+      return [...items].sort((a, b) => {
+          if (a.stockQty > 0 && b.stockQty === 0) return -1;
+          if (a.stockQty === 0 && b.stockQty > 0) return 1;
+          return b.createdAt.toMillis() - a.createdAt.toMillis();
+      });
+    } else { // Customer View
+      const grouped = new Map<string, CustomerViewItem>();
+      const sortedByDate = [...items].sort((a,b) => b.createdAt.toMillis() - a.createdAt.toMillis());
 
+      for (const item of sortedByDate) {
+        if (!grouped.has(item.name)) {
+          grouped.set(item.name, {
+            name: item.name,
+            salePrice: item.salePrice,
+            stockQty: 0,
+            photoUrl: item.photoUrl,
+            sourceItems: []
+          });
+        }
+        const group = grouped.get(item.name)!;
+        group.stockQty += item.stockQty;
+        group.sourceItems.push({ id: item.id, stock: item.stockQty });
+      }
+
+      return Array.from(grouped.values()).sort((a, b) => {
+        if (a.stockQty > 0 && b.stockQty === 0) return -1;
+        if (a.stockQty === 0 && b.stockQty > 0) return 1;
+        return a.name.localeCompare(b.name);
+      });
+    }
+  }, [items, view]);
 
   const handleEditItem = (item: Item) => {
     setEditingItem(item);
-    editItemForm.reset(item);
+    form.reset({
+        name: item.name,
+        purchasePrice: item.purchasePrice,
+        salePrice: item.salePrice,
+        stockQty: item.stockQty,
+        supplier: item.supplier
+    });
     setIsFormOpen(true);
   }
 
-  const handleDeleteItem = async (itemId: string) => {
-    if (!user) return;
-    try {
-        await deleteDoc(doc(db, 'users', user.uid, 'items', itemId));
-        toast({ title: "Item Deleted", description: "The item has been successfully removed." });
-    } catch (error) {
-        toast({ variant: "destructive", title: "Error", description: "Could not delete the item." });
-    }
-  }
-
-  const onUpdateItemSubmit = async (values: ItemFormValues) => {
+  const onSubmit = async (values: ItemFormValues) => {
     if (!user || !editingItem) return;
     try {
         const itemDoc = doc(db, 'users', user.uid, 'items', editingItem.id);
@@ -194,83 +209,56 @@ export default function ItemsPage() {
         toast({ variant: "destructive", title: "Error", description: `Could not save the item.` });
     }
   };
-  
-  // --- Sell Dialog Logic ---
-  const handleOpenSellDialog = () => {
-    // Reset state from previous sale
+
+  const openSellDialog = () => {
     setSelectedCustomerId('');
     setSaleItems([]);
     setPaymentGiven(0);
+    setIsSavingSale(false);
     setIsSellDialogOpen(true);
-  };
-
+  }
+  
   const handleAddSaleItemRow = () => {
-    const availableItems = items.filter(i => i.stockQty > 0);
-    if(availableItems.length === 0) {
-        toast({variant: 'destructive', title: 'No stock available', description: 'Cannot add items to sell.'});
-        return;
-    }
-    setSaleItems([...saleItems, {
-        rowId: Date.now().toString(),
-        itemId: '',
-        itemName: '',
-        qty: 1,
-        rate: 0,
-        stock: 0
-    }]);
+    setSaleItems([...saleItems, { rowId: Date.now().toString(), itemId: '', itemName: '', qty: 1, rate: 0, stock: 0 }]);
   };
 
-  const handleRemoveSaleItemRow = (rowId: string) => {
-    setSaleItems(saleItems.filter(item => item.rowId !== rowId));
-  };
-
-  const handleSaleItemChange = <K extends keyof SaleBillItem>(rowId: string, field: K, value: SaleBillItem[K]) => {
+  const handleSaleItemChange = (rowId: string, field: keyof SaleBillItem, value: any) => {
     setSaleItems(saleItems.map(item => {
         if (item.rowId === rowId) {
-            const updatedItem = { ...item, [field]: value };
+            const updated = { ...item, [field]: value };
             if (field === 'itemId') {
-                const selectedItem = items.find(i => i.id === value);
-                if (selectedItem) {
-                    updatedItem.itemName = selectedItem.name;
-                    updatedItem.rate = selectedItem.salePrice;
-                    updatedItem.stock = selectedItem.stockQty;
+                const selected = items.find(i => i.id === value);
+                if (selected) {
+                  updated.itemName = selected.name;
+                  updated.rate = selected.salePrice;
+                  updated.stock = selected.stockQty;
                 }
             }
-            if (field === 'qty') {
-                if (Number(value) > item.stock) {
-                    toast({ variant: 'destructive', title: 'Stock limit reached', description: `Only ${item.stock} units available.`});
-                    updatedItem.qty = item.stock;
-                }
+            if (field === 'qty' && Number(value) > updated.stock) {
+                toast({ variant: 'destructive', title: 'Stock Limit Exceeded', description: `Only ${updated.stock} units available.`});
+                updated.qty = updated.stock;
             }
-            return updatedItem;
+            return updated;
         }
         return item;
     }));
   };
 
+  const handleRemoveSaleItemRow = (rowId: string) => setSaleItems(saleItems.filter(item => item.rowId !== rowId));
+
   const saleSummary = useMemo(() => {
     const grandTotal = saleItems.reduce((sum, item) => sum + (Number(item.qty) || 0) * (Number(item.rate) || 0), 0);
-    const remaining = grandTotal - (Number(paymentGiven) || 0);
-    return {
-        totalItems: saleItems.length,
-        totalQty: saleItems.reduce((sum, item) => sum + (Number(item.qty) || 0), 0),
-        grandTotal,
-        remaining,
-    };
+    return { grandTotal, remaining: grandTotal - (Number(paymentGiven) || 0) };
   }, [saleItems, paymentGiven]);
-
 
   const handleSaveCustomer = async (values: CustomerFormValues) => {
     if (!user) return;
     addCustomerForm.control.disabled = true;
     try {
         const newCustomerRef = await addDoc(collection(db, 'users', user.uid, 'customers'), {
-            ...values,
-            totalCredit: 0,
-            totalPaid: 0,
-            createdAt: serverTimestamp(),
+            ...values, totalCredit: 0, totalPaid: 0, createdAt: serverTimestamp(),
         });
-        toast({ title: "Customer Added", description: `${values.name} has been added successfully.` });
+        toast({ title: "Customer Added" });
         setSelectedCustomerId(newCustomerRef.id);
         setIsAddCustomerDialogOpen(false);
         addCustomerForm.reset();
@@ -282,264 +270,185 @@ export default function ItemsPage() {
   }
 
   const handleSaveSale = async () => {
-    if (!user) return;
-    if (!selectedCustomerId) {
-        toast({ variant: 'destructive', title: 'Validation Error', description: 'Please select a customer.'});
+    if (!user || !selectedCustomerId || saleItems.length === 0 || saleItems.some(i => !i.itemId || i.qty <= 0)) {
+        toast({ variant: 'destructive', title: 'Validation Error', description: 'Please select a customer and add valid items.'});
         return;
     }
-    if (saleItems.length === 0 || saleItems.some(i => !i.itemId || i.qty <= 0)) {
-        toast({ variant: 'destructive', title: 'Validation Error', description: 'Please add valid items and quantities to the bill.'});
-        return;
-    }
-    
     setIsSavingSale(true);
-
     try {
         await runTransaction(db, async (transaction) => {
-            // 1. Find the customer's open bill
-            const openBillQuery = query(
-                collection(db, 'users', user.uid, 'customers', selectedCustomerId, 'bills'),
-                where('status', '==', 'OPEN'),
-                limit(1)
-            );
+            const openBillQuery = query(collection(db, 'users', user.uid, 'customers', selectedCustomerId, 'bills'), where('status', '==', 'OPEN'), limit(1));
             const openBillSnapshot = await getDocs(openBillQuery);
-            const openBillDoc = openBillSnapshot.docs.length > 0 ? openBillSnapshot.docs[0] : null;
-
-            // 2. Prepare item updates and check stock
+            
             for (const item of saleItems) {
                 const itemRef = doc(db, 'users', user.uid, 'items', item.itemId);
                 const itemSnap = await transaction.get(itemRef);
-                if (!itemSnap.exists() || itemSnap.data().stockQty < item.qty) {
-                    throw new Error(`Not enough stock for ${item.itemName}.`);
-                }
+                if (!itemSnap.exists() || itemSnap.data().stockQty < item.qty) throw new Error(`Not enough stock for ${item.itemName}.`);
                 transaction.update(itemRef, { stockQty: increment(-item.qty) });
             }
 
-            // 3. Prepare bill update/creation
             const newBillItems: CustomerBillItem[] = saleItems.map(({ itemId, itemName, qty, rate }) => ({ itemId, itemName, qty, rate }));
             const newPayment: Payment | null = paymentGiven > 0 ? { amount: paymentGiven, date: serverTimestamp(), method: 'Cash' } : null;
 
-            if (openBillDoc) {
-                // Update existing open bill
-                const billRef = openBillDoc.ref;
+            if (openBillSnapshot.docs.length > 0) {
+                const openBillDoc = openBillSnapshot.docs[0];
                 const billData = openBillDoc.data() as CustomerBill;
-                const updatedItems = [...billData.items, ...newBillItems];
-                const updatedPayments = newPayment ? [...billData.payments, newPayment] : billData.payments;
-                
-                transaction.update(billRef, {
-                    items: updatedItems,
-                    payments: updatedPayments,
+                transaction.update(openBillDoc.ref, {
+                    items: [...billData.items, ...newBillItems],
+                    payments: newPayment ? [...billData.payments, newPayment] : billData.payments,
                     totalAmount: billData.totalAmount + saleSummary.grandTotal,
                     totalPaid: billData.totalPaid + (paymentGiven || 0),
                     updatedAt: serverTimestamp()
                 });
             } else {
-                // Create a new open bill
-                const billRef = doc(collection(db, 'users', user.uid, 'customers', selectedCustomerId, 'bills'));
                 const customerRef = doc(db, 'users', user.uid, 'customers', selectedCustomerId);
                 const customerSnap = await transaction.get(customerRef);
-                const customerData = customerSnap.data() as Customer;
-                const previousBalance = (customerData.totalCredit || 0) - (customerData.totalPaid || 0);
-
-                const newBill: Omit<CustomerBill, 'id'> = {
-                    billNumber: Date.now().toString().slice(-6),
-                    status: 'OPEN',
-                    items: newBillItems,
-                    payments: newPayment ? [newPayment] : [],
-                    previousBalance: previousBalance,
-                    totalAmount: saleSummary.grandTotal,
-                    totalPaid: paymentGiven || 0,
-                    createdAt: serverTimestamp(),
-                    updatedAt: serverTimestamp(),
-                };
-                transaction.set(billRef, newBill);
+                const previousBalance = ((customerSnap.data()?.totalCredit || 0) - (customerSnap.data()?.totalPaid || 0));
+                
+                const newBillRef = doc(collection(db, 'users', user.uid, 'customers', selectedCustomerId, 'bills'));
+                transaction.set(newBillRef, {
+                    billNumber: Date.now().toString().slice(-6), status: 'OPEN',
+                    items: newBillItems, payments: newPayment ? [newPayment] : [],
+                    previousBalance, totalAmount: saleSummary.grandTotal, totalPaid: paymentGiven || 0,
+                    createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
+                });
             }
 
-            // 4. Update customer totals
             const customerRef = doc(db, 'users', user.uid, 'customers', selectedCustomerId);
             transaction.update(customerRef, {
                 totalCredit: increment(saleSummary.grandTotal),
                 totalPaid: increment(paymentGiven || 0)
             });
         });
-
-        toast({ title: "Sale Saved!", description: "The bill has been updated successfully." });
+        toast({ title: "Sale Saved!", description: "The bill has been updated." });
         setIsSellDialogOpen(false);
     } catch (e: any) {
-        toast({ variant: 'destructive', title: "Transaction Failed", description: e.message || "Could not save the sale." });
+        toast({ variant: 'destructive', title: "Transaction Failed", description: e.message || "Could not save sale." });
     } finally {
         setIsSavingSale(false);
     }
   }
-
-
-  const totalStockValue = useMemo(() => {
-    return items.reduce((total, item) => total + (item.purchasePrice * item.stockQty), 0);
-  }, [items]);
+  
+  const ItemCard = ({ item }: { item: Item | CustomerViewItem }) => (
+    <Card className="flex flex-col">
+        <CardContent className="p-4 flex-grow">
+            {'photoUrl' in item && item.photoUrl && (
+                <div className="relative w-full h-32 mb-4 rounded-md overflow-hidden">
+                    <Image src={item.photoUrl} alt={item.name} layout="fill" objectFit="cover" />
+                </div>
+            )}
+            <h3 className="font-semibold text-lg">{item.name}</h3>
+            <div className="text-sm text-muted-foreground mt-1">
+                {'stockQty' in item && <p>Qty: <span className="font-medium text-foreground">{item.stockQty}</span></p>}
+            </div>
+             <div className="mt-2">
+                <p className="text-xl font-bold text-primary">${item.salePrice.toFixed(2)}</p>
+                {view === 'user' && 'purchasePrice' in item && (
+                    <p className="text-xs text-muted-foreground">Cost: ${item.purchasePrice.toFixed(2)}</p>
+                )}
+            </div>
+            {view === 'user' && 'supplier' in item && item.supplier && (
+                 <p className="text-xs text-muted-foreground mt-2">Supplier: {item.supplier}</p>
+            )}
+        </CardContent>
+        <CardFooter className="p-2 border-t">
+            <div className="w-full flex gap-2">
+                {view === 'user' && 'createdAt' in item && ( // check if it's a full Item object
+                    <Button variant="ghost" size="sm" className="flex-1" onClick={() => handleEditItem(item)}>
+                        <Pencil className="mr-2 h-4 w-4" /> Edit
+                    </Button>
+                )}
+                <Button variant="secondary" size="sm" className="flex-1" onClick={openSellDialog}>
+                    <PlusCircle className="mr-2 h-4 w-4" /> Sell
+                </Button>
+            </div>
+        </CardFooter>
+    </Card>
+  );
 
   return (
     <div className="container mx-auto p-4 sm:p-6 lg:p-8">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle className="text-3xl font-bold tracking-tight">Available Items</CardTitle>
-              <CardDescription>Manage your inventory and view stock levels.</CardDescription>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-3xl font-bold tracking-tight">Available Items</h1>
+        <div className="flex items-center gap-4">
+           <Button variant="outline" size="icon" disabled><Languages /></Button>
+            <div className="flex items-center space-x-2">
+                <Users className="h-5 w-5 text-muted-foreground" />
+                <Switch id="view-mode" checked={view === 'user'} onCheckedChange={(c) => setView(c ? 'user' : 'customer')} />
+                <Store className="h-5 w-5 text-muted-foreground" />
+                <Label htmlFor="view-mode" className="text-sm font-medium">{view === 'user' ? 'Owner View' : 'Customer View'}</Label>
             </div>
-            <div className="flex gap-2">
-                <Button asChild>
-                    <Link href="/dashboard/items/purchase">
-                        <ShoppingCart className="mr-2 h-4 w-4" /> Purchase Items
-                    </Link>
-                </Button>
-                <Button variant="secondary" onClick={handleOpenSellDialog}>
-                    <DollarSign className="mr-2 h-4 w-4" /> Sell Items
-                </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <Card className="mb-4">
-                <CardHeader className="pb-2">
-                    <CardTitle className="text-lg">Inventory Summary</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <p className="text-2xl font-bold">${totalStockValue.toFixed(2)}</p>
-                    <p className="text-xs text-muted-foreground">Total Stock Value</p>
-                </CardContent>
-            </Card>
-
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Item Name</TableHead>
-                  <TableHead>Stock</TableHead>
-                  <TableHead>Purchase Price</TableHead>
-                  <TableHead>Sale Price</TableHead>
-                  <TableHead>Stock Value</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  Array.from({ length: 3 }).map((_, i) => (
-                    <TableRow key={i}><TableCell colSpan={7}><Skeleton className="h-8 w-full" /></TableCell></TableRow>
-                  ))
-                ) : items.length > 0 ? (
-                  items.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell className="font-medium">{item.name}</TableCell>
-                      <TableCell>{item.stockQty}</TableCell>
-                      <TableCell>${item.purchasePrice.toFixed(2)}</TableCell>
-                      <TableCell>${item.salePrice.toFixed(2)}</TableCell>
-                      <TableCell>${(item.purchasePrice * item.stockQty).toFixed(2)}</TableCell>
-                      <TableCell>
-                        {item.stockQty < 5 ? (
-                           <Badge variant={item.stockQty === 0 ? 'destructive' : 'secondary'}>
-                              {item.stockQty === 0 ? 'Out of Stock' : 'Low Stock'}
-                           </Badge>
-                        ): (
-                          <Badge variant="default">In Stock</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                          <div className="flex gap-2">
-                              <Button variant="ghost" size="icon" onClick={() => handleEditItem(item)}>
-                                  <Pencil className="h-4 w-4" />
-                              </Button>
-                              <AlertDialog>
-                                  <AlertDialogTrigger asChild>
-                                      <Button variant="ghost" size="icon"><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                                  </AlertDialogTrigger>
-                                  <AlertDialogContent>
-                                      <AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This action cannot be undone.</AlertDialogDescription></AlertDialogHeader>
-                                      <AlertDialogFooter>
-                                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                          <AlertDialogAction onClick={() => handleDeleteItem(item.id)}>Delete</AlertDialogAction>
-                                      </AlertDialogFooter>
-                                  </AlertDialogContent>
-                              </AlertDialog>
-                          </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow><TableCell colSpan={7} className="h-24 text-center">No items found.</TableCell></TableRow>
-                )}
-              </TableBody>
-            </Table>
+        </div>
+      </div>
+      
+      {loading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-64 w-full" />)}
+        </div>
+      ) : displayedItems.length > 0 ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+          {displayedItems.map((item) => <ItemCard key={item.name} item={item as Item} />)}
+        </div>
+      ) : (
+        <Card className="col-span-full flex items-center justify-center h-64 border-dashed">
+          <CardContent className="text-center">
+            <p className="text-lg font-semibold">No items in inventory.</p>
+            <p className="text-muted-foreground">Use the "Purchase Items" page to add stock.</p>
           </CardContent>
         </Card>
+      )}
 
-        {/* Edit Item Dialog */}
-        <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-            <DialogContent className="sm:max-w-[480px]">
-            <DialogHeader>
-                <DialogTitle>Edit Item</DialogTitle>
-                <DialogDescription>Update the details of your item.</DialogDescription>
-            </DialogHeader>
-            <Form {...editItemForm}>
-                <form onSubmit={editItemForm.handleSubmit(onUpdateItemSubmit)} className="space-y-4">
-                <FormField control={editItemForm.control} name="name" render={({ field }) => ( <FormItem><FormLabel>Item Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />
-                <div className="grid grid-cols-2 gap-4">
-                    <FormField control={editItemForm.control} name="purchasePrice" render={({ field }) => ( <FormItem><FormLabel>Purchase Price</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem> )} />
-                    <FormField control={editItemForm.control} name="salePrice" render={({ field }) => ( <FormItem><FormLabel>Sale Price</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem> )} />
-                </div>
-                <FormField control={editItemForm.control} name="stockQty" render={({ field }) => ( <FormItem><FormLabel>Stock Quantity</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem> )} />
-                <FormField control={editItemForm.control} name="supplier" render={({ field }) => ( <FormItem><FormLabel>Supplier</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />
-                <DialogFooter>
-                    <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
-                    <Button type="submit">Save Changes</Button>
-                </DialogFooter>
-                </form>
-            </Form>
+      {/* Edit Item Dialog */}
+      <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+            <DialogContent>
+                <DialogHeader><DialogTitle>Edit Item</DialogTitle><DialogDescription>Update the details for this item.</DialogDescription></DialogHeader>
+                <Form {...form}>
+                    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                        <FormField control={form.control} name="name" render={({ field }) => ( <FormItem><FormLabel>Item Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />
+                        {view === 'user' && (
+                            <FormField control={form.control} name="purchasePrice" render={({ field }) => ( <FormItem><FormLabel>Purchase Price</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem> )} />
+                        )}
+                        <FormField control={form.control} name="salePrice" render={({ field }) => ( <FormItem><FormLabel>Sale Price</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem> )} />
+                        <FormField control={form.control} name="stockQty" render={({ field }) => ( <FormItem><FormLabel>Stock Quantity</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem> )} />
+                        {view === 'user' && (
+                           <FormField control={form.control} name="supplier" render={({ field }) => ( <FormItem><FormLabel>Supplier</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />
+                        )}
+                        <DialogFooter><DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose><Button type="submit">Save Changes</Button></DialogFooter>
+                    </form>
+                </Form>
             </DialogContent>
-        </Dialog>
-
-        {/* Sell Item Dialog */}
-        <Dialog open={isSellDialogOpen} onOpenChange={setIsSellDialogOpen}>
+      </Dialog>
+      
+      {/* Sell Item Dialog */}
+      <Dialog open={isSellDialogOpen} onOpenChange={setIsSellDialogOpen}>
             <DialogContent className="max-w-4xl">
-                <DialogHeader>
-                    <DialogTitle>Create Sale Bill</DialogTitle>
-                    <DialogDescription>Select a customer and add items to sell.</DialogDescription>
-                </DialogHeader>
+                <DialogHeader><DialogTitle>Create Sale Bill</DialogTitle><DialogDescription>Select a customer and add items to sell.</DialogDescription></DialogHeader>
                 <div className="grid grid-cols-5 gap-6 py-4">
                     <div className="col-span-2 space-y-4">
-                        <Card>
-                            <CardHeader><CardTitle className="text-lg">Customer</CardTitle></CardHeader>
+                        <Card><CardHeader><CardTitle className="text-lg">Customer</CardTitle></CardHeader>
                             <CardContent>
                                 {loadingCustomers ? <p>Loading...</p> : (
                                     <div className="flex items-center gap-2">
-                                        <Select value={selectedCustomerId} onValueChange={setSelectedCustomerId}>
-                                            <SelectTrigger><SelectValue placeholder="Select a customer" /></SelectTrigger>
-                                            <SelectContent>{customers.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
-                                        </Select>
-                                        <Dialog open={isAddCustomerDialogOpen} onOpenChange={setIsAddCustomerDialogOpen}>
-                                            <DialogTrigger asChild><Button variant="outline" size="icon"><UserPlus/></Button></DialogTrigger>
+                                        <Select value={selectedCustomerId} onValueChange={setSelectedCustomerId}><SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger><SelectContent>{customers.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select>
+                                        <Dialog open={isAddCustomerDialogOpen} onOpenChange={setIsAddCustomerDialogOpen}><DialogTrigger asChild><Button variant="outline" size="icon"><UserPlus/></Button></DialogTrigger>
                                             <DialogContent>
                                                 <DialogHeader><DialogTitle>Add New Customer</DialogTitle></DialogHeader>
-                                                <Form {...addCustomerForm}>
-                                                    <form onSubmit={addCustomerForm.handleSubmit(handleSaveCustomer)} className="space-y-4">
-                                                        <FormField control={addCustomerForm.control} name="name" render={({field}) => ( <FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )}/>
-                                                        <FormField control={addCustomerForm.control} name="phone" render={({field}) => ( <FormItem><FormLabel>Phone</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )}/>
-                                                        <FormField control={addCustomerForm.control} name="address" render={({field}) => ( <FormItem><FormLabel>Address</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )}/>
-                                                        <DialogFooter>
-                                                            <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
-                                                            <Button type="submit" disabled={addCustomerForm.control.disabled}>Save</Button>
-                                                        </DialogFooter>
-                                                    </form>
-                                                </Form>
+                                                <Form {...addCustomerForm}><form onSubmit={addCustomerForm.handleSubmit(handleSaveCustomer)} className="space-y-4">
+                                                    <FormField control={addCustomerForm.control} name="name" render={({field}) => ( <FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )}/>
+                                                    <FormField control={addCustomerForm.control} name="phone" render={({field}) => ( <FormItem><FormLabel>Phone</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )}/>
+                                                    <FormField control={addCustomerForm.control} name="address" render={({field}) => ( <FormItem><FormLabel>Address</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )}/>
+                                                    <DialogFooter><DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose><Button type="submit" disabled={addCustomerForm.control.disabled}>Save</Button></DialogFooter>
+                                                </form></Form>
                                             </DialogContent>
                                         </Dialog>
                                     </div>
                                 )}
                             </CardContent>
                         </Card>
-                        <Card>
-                            <CardHeader><CardTitle className="text-lg">Payment</CardTitle></CardHeader>
+                        <Card><CardHeader><CardTitle className="text-lg">Payment</CardTitle></CardHeader>
                             <CardContent className="space-y-4">
                                 <div className="text-center p-4 bg-muted rounded-lg">
-                                    <p className="text-sm text-muted-foreground">Grand Total</p>
-                                    <p className="text-2xl font-bold">${saleSummary.grandTotal.toFixed(2)}</p>
+                                    <p className="text-sm text-muted-foreground">Grand Total</p><p className="text-2xl font-bold">${saleSummary.grandTotal.toFixed(2)}</p>
                                 </div>
                                 <div className="space-y-2">
                                     <Label htmlFor="paymentGiven">Payment Received</Label>
@@ -549,33 +458,15 @@ export default function ItemsPage() {
                             </CardContent>
                         </Card>
                     </div>
-
                     <div className="col-span-3">
-                        <Card>
-                            <CardHeader>
-                                <CardTitle className="text-lg">Bill Items</CardTitle>
-                            </CardHeader>
+                        <Card><CardHeader><CardTitle className="text-lg">Bill Items</CardTitle></CardHeader>
                             <CardContent>
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead className="w-[45%]">Item</TableHead>
-                                            <TableHead>Qty</TableHead>
-                                            <TableHead>Rate</TableHead>
-                                            <TableHead>Subtotal</TableHead>
-                                            <TableHead></TableHead>
-                                        </TableRow>
-                                    </TableHeader>
+                                <Table><TableHeader><TableRow><TableHead className="w-[45%]">Item</TableHead><TableHead>Qty</TableHead><TableHead>Rate</TableHead><TableHead>Subtotal</TableHead><TableHead></TableHead></TableRow></TableHeader>
                                     <TableBody>
                                         {saleItems.map(item => (
                                             <TableRow key={item.rowId}>
-                                                <TableCell>{item.itemName || (
-                                                    <Select value={item.itemId} onValueChange={(v) => handleSaleItemChange(item.rowId, 'itemId', v)}>
-                                                        <SelectTrigger><SelectValue placeholder="Select Item"/></SelectTrigger>
-                                                        <SelectContent>{items.filter(i=>i.stockQty > 0).map(i => <SelectItem key={i.id} value={i.id}>{i.name} (Qty: {i.stockQty})</SelectItem>)}</SelectContent>
-                                                    </Select>
-                                                )}</TableCell>
-                                                <TableCell><Input type="number" value={item.qty} onChange={e => handleSaleItemChange(item.rowId, 'qty', parseInt(e.target.value) || 0)}/></TableCell>
+                                                <TableCell>{item.itemName || (<Select value={item.itemId} onValueChange={(v) => handleSaleItemChange(item.rowId, 'itemId', v)}><SelectTrigger><SelectValue placeholder="Select Item"/></SelectTrigger><SelectContent>{items.filter(i=>i.stockQty > 0).map(i => <SelectItem key={i.id} value={i.id}>{i.name} (Qty: {i.stockQty})</SelectItem>)}</SelectContent></Select>)}</TableCell>
+                                                <TableCell><Input type="number" value={item.qty} onChange={e => handleSaleItemChange(item.rowId, 'qty', parseInt(e.target.value) || 1)}/></TableCell>
                                                 <TableCell><Input type="number" value={item.rate} onChange={e => handleSaleItemChange(item.rowId, 'rate', parseFloat(e.target.value) || 0)}/></TableCell>
                                                 <TableCell>${(item.qty * item.rate).toFixed(2)}</TableCell>
                                                 <TableCell><Button variant="ghost" size="icon" onClick={() => handleRemoveSaleItemRow(item.rowId)}><Trash2 className="h-4 w-4 text-destructive"/></Button></TableCell>
@@ -588,17 +479,9 @@ export default function ItemsPage() {
                         </Card>
                     </div>
                 </div>
-                <DialogFooter>
-                    <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                    <Button onClick={handleSaveSale} disabled={isSavingSale}>
-                        {isSavingSale && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-                        Save Sale
-                    </Button>
-                </DialogFooter>
+                <DialogFooter><DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose><Button onClick={handleSaveSale} disabled={isSavingSale}>{isSavingSale && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Save Sale</Button></DialogFooter>
             </DialogContent>
-        </Dialog>
+      </Dialog>
     </div>
   );
 }
-
-    

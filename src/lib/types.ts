@@ -7,6 +7,7 @@ export interface Item {
   salePrice: number;
   stockQty: number;
   supplier?: string;
+  photoUrl?: string;
   createdAt: Timestamp;
 }
 
