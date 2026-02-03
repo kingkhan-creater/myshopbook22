@@ -9,6 +9,11 @@ service cloud.firestore {
         && request.auth.uid == userId;
     }
 
+    // Generic rule for all user-owned subcollections (items, customers, etc.)
+    match /users/{userId}/{subcollection}/{docId} {
+        allow read, write, delete: if request.auth != null && request.auth.uid == userId;
+    }
+
     // Public user profiles for discovery
     match /publicUsers/{userId} {
       allow read: if request.auth != null;
