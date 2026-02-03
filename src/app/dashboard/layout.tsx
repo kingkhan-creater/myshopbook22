@@ -16,6 +16,7 @@ import {
 import {
   Sheet,
   SheetContent,
+  SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -161,9 +162,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </Button>
             </SheetTrigger>
             <SheetContent side="left" className="flex flex-col bg-sidebar p-0">
-                <div className="flex h-16 items-center border-b px-4">
-                  <Logo />
-                </div>
+              <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
+              <div className="flex h-16 items-center border-b px-4">
+                <Logo />
+              </div>
               <DashboardNav className="p-4" />
             </SheetContent>
           </Sheet>
