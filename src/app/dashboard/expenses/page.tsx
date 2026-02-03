@@ -15,12 +15,13 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { PlusCircle, Wallet, Calendar, CircleDollarSign, Pencil, Trash2 } from 'lucide-react';
+import { PlusCircle, Wallet, Calendar, CircleDollarSign, Pencil, Trash2, TrendingUp } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
 const mockSummary = [
   { title: 'Total Expenses', value: '$8,450.00', icon: Wallet },
   { title: 'This Month', value: '$1,200.50', icon: Calendar },
+  { title: 'Today', value: '$75.20', icon: TrendingUp },
   { title: 'Pending Payments', value: '$350.00', icon: CircleDollarSign },
 ];
 
@@ -82,7 +83,7 @@ export default function ExpensesPage() {
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground mb-6">Full functionality for adding and managing expenses will be implemented soon.</p>
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
               {mockSummary.map(item => (
                 <Card key={item.title}>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
