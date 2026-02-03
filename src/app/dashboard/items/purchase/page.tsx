@@ -332,10 +332,10 @@ export default function PurchasePage() {
                                         )}
                                     </TableCell>
                                     <TableCell>
-                                        <Input type="number" value={item.qty} onChange={(e) => handleBillItemChange(item.rowId, 'qty', parseInt(e.target.value) || 0)} />
+                                        <Input type="number" placeholder="0" value={item.qty} onChange={(e) => handleBillItemChange(item.rowId, 'qty', parseInt(e.target.value) || 0)} />
                                     </TableCell>
                                     <TableCell>
-                                        <Input type="number" value={item.price} onChange={(e) => handleBillItemChange(item.rowId, 'price', parseFloat(e.target.value) || 0)} />
+                                        <Input type="number" placeholder="0.00" value={item.price} onChange={(e) => handleBillItemChange(item.rowId, 'price', parseFloat(e.target.value) || 0)} />
                                     </TableCell>
                                     <TableCell>${(item.qty * item.price).toFixed(2)}</TableCell>
                                     <TableCell>
