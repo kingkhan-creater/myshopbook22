@@ -58,13 +58,12 @@ import {
     AlertDialogCancel,
     AlertDialogContent,
     AlertDialogDescription,
-    AlertDialogFooter,
     AlertDialogHeader,
     AlertDialogTitle,
-    AlertDialogTrigger,
   } from "@/components/ui/alert-dialog"
 import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { PlusCircle, Pencil, Trash2, Loader2, ShoppingCart, DollarSign, UserPlus } from 'lucide-react';
@@ -543,7 +542,7 @@ export default function ItemsPage() {
                                     <p className="text-2xl font-bold">${saleSummary.grandTotal.toFixed(2)}</p>
                                 </div>
                                 <div className="space-y-2">
-                                    <FormLabel htmlFor="paymentGiven">Payment Received</FormLabel>
+                                    <Label htmlFor="paymentGiven">Payment Received</Label>
                                     <Input id="paymentGiven" type="number" value={paymentGiven} onChange={(e) => setPaymentGiven(parseFloat(e.target.value) || 0)} placeholder="0.00"/>
                                     <p className="text-lg font-semibold">Remaining: <span className="text-destructive">${saleSummary.remaining.toFixed(2)}</span></p>
                                 </div>
