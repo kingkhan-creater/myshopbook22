@@ -293,39 +293,46 @@ export default function ItemsPage() {
     setIsSavingSale(true);
     try {
         await runTransaction(db, async (transaction) => {
-            // 1. Update stock quantities for all sold items
-            for (const item of saleItems) {
-                const itemRef = doc(db, 'users', user.uid, 'items', item.itemId);
-                const itemSnap = await transaction.get(itemRef);
-                if (!itemSnap.exists() || itemSnap.data().stockQty < item.qty) {
-                    throw new Error(`Not enough stock for ${item.itemName}.`);
-                }
-                transaction.update(itemRef, { stockQty: increment(-item.qty) });
-            }
+            // =================================================================
+            // 1. READ PHASE - All reads must happen before any writes.
+            // =================================================================
+            
+            const itemRefs = saleItems.map(item => doc(db, 'users', user.uid, 'items', item.itemId));
+            const itemSnaps = await Promise.all(itemRefs.map(ref => transaction.get(ref)));
 
-            // 2. Find the customer's open bill or prepare to create a new one
             const userBillsRef = collection(db, 'users', user.uid, 'bills');
             const openBillQuery = query(userBillsRef, where('customerId', '==', selectedCustomerId), where('status', '==', 'OPEN'), limit(1));
             const openBillSnapshot = await transaction.get(openBillQuery);
+            
+            const customerRef = doc(db, 'users', user.uid, 'customers', selectedCustomerId);
+            const customerSnap = await transaction.get(customerRef);
 
+            // =================================================================
+            // 2. VALIDATION & CALCULATION PHASE - No more reads or writes.
+            // =================================================================
+            
+            if (!customerSnap.exists()) {
+                throw new Error("Customer not found.");
+            }
+
+            for (let i = 0; i < saleItems.length; i++) {
+                const saleItem = saleItems[i];
+                const itemSnap = itemSnaps[i];
+                if (!itemSnap.exists() || itemSnap.data().stockQty < saleItem.qty) {
+                    throw new Error(`Not enough stock for ${saleItem.itemName}. Only ${itemSnap.data()?.stockQty || 0} available.`);
+                }
+            }
+            
             let billRef;
             let currentBillData: CustomerBill;
             let isNewBill = false;
-
-            if (openBillSnapshot.docs.length > 0) {
-                const openBillDoc = openBillSnapshot.docs[0];
-                billRef = openBillDoc.ref;
-                currentBillData = openBillDoc.data() as CustomerBill;
-            } else {
+            
+            if (openBillSnapshot.empty) {
                 isNewBill = true;
-                const customerRef = doc(db, 'users', user.uid, 'customers', selectedCustomerId);
-                const customerSnap = await transaction.get(customerRef);
                 const customerData = customerSnap.data() as Customer;
                 const previousBalance = (customerData.totalCredit || 0) - (customerData.totalPaid || 0);
 
                 billRef = doc(userBillsRef);
-                // This is a template for the new bill.
-                // We'll merge the final calculated data into it before setting.
                 currentBillData = {
                     id: billRef.id,
                     customerId: selectedCustomerId,
@@ -336,39 +343,29 @@ export default function ItemsPage() {
                     totalPaid: 0,
                     grandTotal: previousBalance,
                     remaining: previousBalance,
-                } as Omit<CustomerBill, 'createdAt' | 'updatedAt'> as CustomerBill;
+                } as Omit<CustomerBill, 'createdAt' | 'updatedAt' | 'closedAt'> as CustomerBill;
+            } else {
+                const openBillDoc = openBillSnapshot.docs[0];
+                billRef = openBillDoc.ref;
+                currentBillData = openBillDoc.data() as CustomerBill;
             }
 
-            // 3. Add new items to the bill's subcollection
-            const itemsSubcollectionRef = collection(billRef, 'items');
             let newItemsTotalForThisSale = 0;
-            for (const item of saleItems) {
-                const newItemRef = doc(itemsSubcollectionRef);
+            const billItemsToAdd = saleItems.map(item => {
                 const total = (item.qty * item.rate) - (item.discount || 0);
                 newItemsTotalForThisSale += total;
-                transaction.set(newItemRef, {
+                return {
                     itemId: item.itemId,
                     itemName: item.itemName,
                     qty: item.qty,
                     rate: item.rate,
                     discount: item.discount || 0,
                     total: total,
-                });
-            }
-
-            // 4. Add payment to the bill's subcollection, if provided
-            const paymentAmount = paymentGiven || 0;
-            if (paymentAmount > 0) {
-                const paymentsSubcollectionRef = collection(billRef, 'payments');
-                const newPaymentRef = doc(paymentsSubcollectionRef);
-                transaction.set(newPaymentRef, {
-                    amount: paymentAmount,
-                    method: 'Cash', // Or get from form
-                    createdAt: serverTimestamp(),
-                });
-            }
+                };
+            });
             
-            // 5. Calculate final bill values
+            const paymentAmount = paymentGiven || 0;
+
             const finalItemsTotal = currentBillData.itemsTotal + newItemsTotalForThisSale;
             const finalTotalPaid = currentBillData.totalPaid + paymentAmount;
             const finalGrandTotal = currentBillData.previousBalance + finalItemsTotal;
@@ -381,21 +378,45 @@ export default function ItemsPage() {
                 remaining: finalRemaining,
                 updatedAt: serverTimestamp(),
             };
+
+            // =================================================================
+            // 3. WRITE PHASE - All writes happen here.
+            // =================================================================
+
+            for (let i = 0; i < saleItems.length; i++) {
+                const saleItem = saleItems[i];
+                const itemRef = itemRefs[i];
+                transaction.update(itemRef, { stockQty: increment(-saleItem.qty) });
+            }
+
+            const itemsSubcollectionRef = collection(billRef, 'items');
+            for(const billItem of billItemsToAdd) {
+                const newItemRef = doc(itemsSubcollectionRef);
+                transaction.set(newItemRef, billItem);
+            }
             
-            // 6. Set or Update the bill document
+            if (paymentAmount > 0) {
+                const paymentsSubcollectionRef = collection(billRef, 'payments');
+                const newPaymentRef = doc(paymentsSubcollectionRef);
+                transaction.set(newPaymentRef, {
+                    amount: paymentAmount,
+                    method: 'Cash',
+                    createdAt: serverTimestamp(),
+                });
+            }
+
             if (isNewBill) {
                 transaction.set(billRef, { ...currentBillData, ...billUpdateData, createdAt: serverTimestamp(), id: billRef.id });
             } else {
                 transaction.update(billRef, billUpdateData);
             }
-
-            // 7. Update customer's aggregate totals
-            const customerRef = doc(db, 'users', user.uid, 'customers', selectedCustomerId);
+            
             transaction.update(customerRef, {
                 totalCredit: increment(newItemsTotalForThisSale),
                 totalPaid: increment(paymentAmount)
             });
         });
+        
         toast({ title: "Sale Saved!", description: "The bill has been updated." });
         setIsSellDialogOpen(false);
     } catch (e: any) {
@@ -445,7 +466,7 @@ export default function ItemsPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-3xl font-bold tracking-tight">Available Items</h1>
          <Button asChild>
-            <Link href="/dashboard/items/purchase">
+            <Link href="/dashboard/items/new">
                 <PlusCircle className="mr-2 h-4 w-4" /> Add/Purchase Items
             </Link>
           </Button>
