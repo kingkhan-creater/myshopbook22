@@ -496,7 +496,7 @@ export default function ItemsPage() {
       
       {/* Sell Item Dialog */}
       <Dialog open={isSellDialogOpen} onOpenChange={setIsSellDialogOpen}>
-            <DialogContent className="max-w-5xl">
+            <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader><DialogTitle>Create Sale Bill</DialogTitle><DialogDescription>Select a customer and add items to sell.</DialogDescription></DialogHeader>
                 <div className="grid grid-cols-5 gap-6 py-4">
                     <div className="col-span-2 space-y-4">
