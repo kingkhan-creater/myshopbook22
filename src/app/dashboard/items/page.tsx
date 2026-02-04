@@ -53,7 +53,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { PlusCircle, Pencil, Trash2, Loader2, UserPlus } from 'lucide-react';
+import { PlusCircle, Pencil, Trash2, Loader2, UserPlus, Camera } from 'lucide-react';
 import type { Item, Customer, CustomerBill } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
 import Image from 'next/image';
@@ -81,6 +81,7 @@ type SaleBillItem = {
     itemName: string;
     qty: number;
     rate: number;
+    discount: number;
     stock: number;
 };
 
@@ -96,6 +97,7 @@ export default function ItemsPage() {
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [isSellDialogOpen, setIsSellDialogOpen] = useState(false);
   const [isAddCustomerDialogOpen, setIsAddCustomerDialogOpen] = useState(false);
+  const [photoBase64, setPhotoBase64] = useState<string | null>(null);
   
   // Sell dialog specific states
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -150,6 +152,7 @@ export default function ItemsPage() {
 
   const handleEditItem = (item: Item) => {
     setEditingItem(item);
+    setPhotoBase64(item.photoBase64 || null);
     form.reset({
         name: item.name,
         purchasePrice: item.purchasePrice,
@@ -160,14 +163,51 @@ export default function ItemsPage() {
     setIsFormOpen(true);
   }
 
+  const handlePhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        if (!e.target?.result) return;
+        const img = document.createElement('img');
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const MAX_WIDTH = 512;
+            let width = img.width;
+            let height = img.height;
+
+            if (width > MAX_WIDTH) {
+                height = (height * MAX_WIDTH) / width;
+                width = MAX_WIDTH;
+            }
+
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+            ctx.drawImage(img, 0, 0, width, height);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+            setPhotoBase64(dataUrl);
+        };
+        img.src = e.target.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
   const onSubmit = async (values: ItemFormValues) => {
     if (!user || !editingItem) return;
     try {
         const itemDoc = doc(db, 'users', user.uid, 'items', editingItem.id);
-        await updateDoc(itemDoc, values);
+        const dataToUpdate: any = { ...values };
+        if (photoBase64) {
+          dataToUpdate.photoBase64 = photoBase64;
+        }
+        await updateDoc(itemDoc, dataToUpdate);
         toast({ title: "Item Updated", description: "Your item has been successfully updated." });
         setIsFormOpen(false);
         setEditingItem(null);
+        setPhotoBase64(null);
     } catch(error) {
         toast({ variant: "destructive", title: "Error", description: `Could not save the item.` });
     }
@@ -182,7 +222,7 @@ export default function ItemsPage() {
   }
   
   const handleAddSaleItemRow = () => {
-    setSaleItems([...saleItems, { rowId: Date.now().toString(), itemId: '', itemName: '', qty: 1, rate: 0, stock: 0 }]);
+    setSaleItems([...saleItems, { rowId: Date.now().toString(), itemId: '', itemName: '', qty: 1, rate: 0, discount: 0, stock: 0 }]);
   };
 
   const handleSaleItemChange = (rowId: string, field: keyof SaleBillItem, value: any) => {
@@ -210,7 +250,7 @@ export default function ItemsPage() {
   const handleRemoveSaleItemRow = (rowId: string) => setSaleItems(saleItems.filter(item => item.rowId !== rowId));
 
   const saleSummary = useMemo(() => {
-    const itemsTotal = saleItems.reduce((sum, item) => sum + (Number(item.qty) || 0) * (Number(item.rate) || 0), 0);
+    const itemsTotal = saleItems.reduce((sum, item) => sum + (Number(item.qty) || 0) * (Number(item.rate) || 0) - (Number(item.discount) || 0), 0);
     return { itemsTotal, remaining: itemsTotal - (Number(paymentGiven) || 0) };
   }, [saleItems, paymentGiven]);
 
@@ -259,12 +299,10 @@ export default function ItemsPage() {
             let currentBillData;
 
             if (openBillSnapshot.docs.length > 0) {
-                // An open bill exists
                 const openBillDoc = openBillSnapshot.docs[0];
                 billRef = openBillDoc.ref;
                 currentBillData = openBillDoc.data() as CustomerBill;
             } else {
-                // No open bill, create a new one
                 const customerRef = doc(db, 'users', user.uid, 'customers', selectedCustomerId);
                 const customerSnap = await transaction.get(customerRef);
                 const customerData = customerSnap.data() as Customer;
@@ -289,12 +327,14 @@ export default function ItemsPage() {
             const itemsSubcollectionRef = collection(billRef, 'items');
             for (const item of saleItems) {
                 const newItemRef = doc(itemsSubcollectionRef);
+                const total = (item.qty * item.rate) - (item.discount || 0);
                 transaction.set(newItemRef, {
                     itemId: item.itemId,
                     itemName: item.itemName,
                     qty: item.qty,
                     rate: item.rate,
-                    total: item.qty * item.rate,
+                    discount: item.discount || 0,
+                    total: total,
                 });
             }
 
@@ -309,9 +349,10 @@ export default function ItemsPage() {
                     createdAt: serverTimestamp(),
                 });
             }
+            
+            const newItemsTotalForThisSale = saleItems.reduce((sum, item) => sum + ((item.qty * item.rate) - (item.discount || 0)), 0);
 
-            // 5. Update the bill's totals
-            const newItemsTotal = currentBillData.itemsTotal + saleSummary.itemsTotal;
+            const newItemsTotal = currentBillData.itemsTotal + newItemsTotalForThisSale;
             const newTotalPaid = currentBillData.totalPaid + paymentAmount;
             const newGrandTotal = currentBillData.previousBalance + newItemsTotal;
 
@@ -329,10 +370,9 @@ export default function ItemsPage() {
                 transaction.set(billRef, { ...currentBillData, ...billUpdateData });
             }
 
-            // 6. Update the customer's aggregate totals
             const customerRef = doc(db, 'users', user.uid, 'customers', selectedCustomerId);
             transaction.update(customerRef, {
-                totalCredit: increment(saleSummary.itemsTotal),
+                totalCredit: increment(newItemsTotalForThisSale),
                 totalPaid: increment(paymentAmount)
             });
         });
@@ -349,10 +389,14 @@ export default function ItemsPage() {
   const ItemCard = ({ item }: { item: Item }) => (
     <Card className="flex flex-col">
         <CardContent className="p-4 flex-grow">
-            {item.photoUrl && (
+            {item.photoBase64 ? (
                 <div className="relative w-full h-32 mb-4 rounded-md overflow-hidden">
-                    <Image src={item.photoUrl} alt={item.name} layout="fill" objectFit="cover" />
+                    <Image src={item.photoBase64} alt={item.name} layout="fill" objectFit="cover" />
                 </div>
+            ) : (
+              <div className="relative w-full h-32 mb-4 rounded-md overflow-hidden bg-muted flex items-center justify-center">
+                <Package className="h-12 w-12 text-muted-foreground" />
+              </div>
             )}
             <h3 className="font-semibold text-lg">{item.name}</h3>
             <div className="text-sm text-muted-foreground mt-1">
@@ -384,7 +428,7 @@ export default function ItemsPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-3xl font-bold tracking-tight">Available Items</h1>
          <Button asChild>
-            <Link href="/dashboard/items/new">
+            <Link href="/dashboard/items/purchase">
                 <PlusCircle className="mr-2 h-4 w-4" /> Add/Purchase Items
             </Link>
           </Button>
@@ -418,6 +462,16 @@ export default function ItemsPage() {
                         <FormField control={form.control} name="salePrice" render={({ field }) => ( <FormItem><FormLabel>Sale Price</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem> )} />
                         <FormField control={form.control} name="stockQty" render={({ field }) => ( <FormItem><FormLabel>Stock Quantity</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem> )} />
                         <FormField control={form.control} name="supplier" render={({ field }) => ( <FormItem><FormLabel>Supplier</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />
+                        <FormItem>
+                            <FormLabel>Item Photo</FormLabel>
+                            <FormControl>
+                                <div className="relative">
+                                  <Camera className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                  <Input type="file" accept="image/*" onChange={handlePhotoChange} className="pl-10" />
+                                </div>
+                            </FormControl>
+                            {photoBase64 && <Image src={photoBase64} alt="Preview" width={80} height={80} className="mt-2 rounded-md"/>}
+                        </FormItem>
                         <DialogFooter><DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose><Button type="submit">Save Changes</Button></DialogFooter>
                     </form>
                 </Form>
@@ -426,7 +480,7 @@ export default function ItemsPage() {
       
       {/* Sell Item Dialog */}
       <Dialog open={isSellDialogOpen} onOpenChange={setIsSellDialogOpen}>
-            <DialogContent className="max-w-4xl">
+            <DialogContent className="max-w-5xl">
                 <DialogHeader><DialogTitle>Create Sale Bill</DialogTitle><DialogDescription>Select a customer and add items to sell.</DialogDescription></DialogHeader>
                 <div className="grid grid-cols-5 gap-6 py-4">
                     <div className="col-span-2 space-y-4">
@@ -466,14 +520,15 @@ export default function ItemsPage() {
                     <div className="col-span-3">
                         <Card><CardHeader><CardTitle className="text-lg">Bill Items</CardTitle></CardHeader>
                             <CardContent>
-                                <Table><TableHeader><TableRow><TableHead className="w-[45%]">Item</TableHead><TableHead>Qty</TableHead><TableHead>Rate</TableHead><TableHead>Subtotal</TableHead><TableHead></TableHead></TableRow></TableHeader>
+                                <Table><TableHeader><TableRow><TableHead className="w-[35%]">Item</TableHead><TableHead>Qty</TableHead><TableHead>Rate</TableHead><TableHead>Discount</TableHead><TableHead>Subtotal</TableHead><TableHead></TableHead></TableRow></TableHeader>
                                     <TableBody>
                                         {saleItems.map(item => (
                                             <TableRow key={item.rowId}>
                                                 <TableCell>{item.itemName || (<Select value={item.itemId} onValueChange={(v) => handleSaleItemChange(item.rowId, 'itemId', v)}><SelectTrigger><SelectValue placeholder="Select Item"/></SelectTrigger><SelectContent>{items.filter(i=>i.stockQty > 0).map(i => <SelectItem key={i.id} value={i.id}>{i.name} (Qty: {i.stockQty})</SelectItem>)}</SelectContent></Select>)}</TableCell>
-                                                <TableCell><Input type="number" value={item.qty} onChange={e => handleSaleItemChange(item.rowId, 'qty', parseInt(e.target.value) || 1)}/></TableCell>
-                                                <TableCell><Input type="number" value={item.rate} onChange={e => handleSaleItemChange(item.rowId, 'rate', parseFloat(e.target.value) || 0)}/></TableCell>
-                                                <TableCell>${(item.qty * item.rate).toFixed(2)}</TableCell>
+                                                <TableCell><Input type="number" value={item.qty} onChange={e => handleSaleItemChange(item.rowId, 'qty', parseInt(e.target.value) || 1)} className="w-16"/></TableCell>
+                                                <TableCell><Input type="number" value={item.rate} onChange={e => handleSaleItemChange(item.rowId, 'rate', parseFloat(e.target.value) || 0)} className="w-20"/></TableCell>
+                                                <TableCell><Input type="number" value={item.discount} onChange={e => handleSaleItemChange(item.rowId, 'discount', parseFloat(e.target.value) || 0)} className="w-20"/></TableCell>
+                                                <TableCell>${((item.qty * item.rate) - (item.discount || 0)).toFixed(2)}</TableCell>
                                                 <TableCell><Button variant="ghost" size="icon" onClick={() => handleRemoveSaleItemRow(item.rowId)}><Trash2 className="h-4 w-4 text-destructive"/></Button></TableCell>
                                             </TableRow>
                                         ))}
@@ -484,7 +539,7 @@ export default function ItemsPage() {
                         </Card>
                     </div>
                 </div>
-                <DialogFooter><DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose><Button onClick={handleSaveSale} disabled={isSavingSale}>{isSavingSale && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Save Sale</Button></DialogFooter>
+                <DialogFooter><DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose><Button onClick={handleSaveSale} disabled={isSavingSale}>{isSavingSale && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Confirm Sale</Button></DialogFooter>
             </DialogContent>
       </Dialog>
     </div>

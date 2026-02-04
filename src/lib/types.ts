@@ -7,7 +7,7 @@ export interface Item {
   salePrice: number;
   stockQty: number;
   supplier?: string;
-  photoUrl?: string;
+  photoBase64?: string;
   createdAt: Timestamp;
 }
 
@@ -19,6 +19,7 @@ export interface Supplier {
   totalPurchase: number;
   totalPaid: number;
   createdAt: Timestamp;
+  photoBase64?: string;
 }
 
 export interface SupplierPayment {
@@ -32,6 +33,7 @@ export interface PurchaseBillItem {
   itemName: string;
   qty: number;
   price: number;
+  sellingPrice: number;
 }
 
 export interface PurchaseBill {
@@ -53,6 +55,7 @@ export interface Customer {
     totalCredit: number;
     totalPaid: number;
     createdAt: Timestamp;
+    photoBase64?: string;
 }
 
 // Represents a payment document in the subcollection
@@ -70,6 +73,7 @@ export interface BillItem {
     itemName: string;
     qty: number;
     rate: number;
+    discount?: number;
     total: number;
 }
 

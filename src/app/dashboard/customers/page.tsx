@@ -6,11 +6,12 @@ import { db } from '@/lib/firebase';
 import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
 import type { Customer } from '@/lib/types';
 import Link from 'next/link';
+import Image from 'next/image';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { PlusCircle, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -96,7 +97,11 @@ export default function CustomersPage() {
                         <TableCell>
                           <Link href={`/dashboard/customers/${customer.id}`} className="flex items-center gap-3 w-full">
                             <Avatar>
-                              <AvatarFallback>{getInitials(customer.name)}</AvatarFallback>
+                              {customer.photoBase64 ? (
+                                <AvatarImage src={customer.photoBase64} alt={customer.name} />
+                              ) : (
+                                <AvatarFallback>{getInitials(customer.name)}</AvatarFallback>
+                              )}
                             </Avatar>
                             <div>
                               <p className="font-medium">{customer.name}</p>

@@ -16,8 +16,6 @@ import {
   serverTimestamp,
   increment,
   addDoc,
-  getDocs,
-  where,
 } from 'firebase/firestore';
 import type { Item, Supplier } from '@/lib/types';
 
@@ -39,6 +37,7 @@ type BillItem = {
   itemName: string;
   qty: number;
   price: number;
+  sellingPrice: number;
 };
 
 const supplierSchema = z.object({
@@ -99,6 +98,7 @@ export default function PurchasePage() {
         itemName: '',
         qty: 1,
         price: 0,
+        sellingPrice: 0,
       },
     ]);
   };
@@ -121,6 +121,7 @@ export default function PurchasePage() {
             if (selectedItem) {
                 updatedItem.itemName = selectedItem.name;
                 updatedItem.price = selectedItem.purchasePrice;
+                updatedItem.sellingPrice = selectedItem.salePrice;
             }
           }
           return updatedItem;
@@ -178,14 +179,19 @@ export default function PurchasePage() {
                 batch.set(newItemRef, {
                     name: billItem.itemName,
                     purchasePrice: billItem.price,
-                    salePrice: billItem.price, // Default sale price to purchase price
+                    salePrice: billItem.sellingPrice,
                     stockQty: billItem.qty,
                     createdAt: serverTimestamp(),
+                    supplier: selectedSupplierId
                 });
             } else {
                 // Update existing item
                 const itemRef = doc(db, 'users', user.uid, 'items', billItem.itemId);
-                batch.update(itemRef, { stockQty: increment(billItem.qty) });
+                batch.update(itemRef, { 
+                    stockQty: increment(billItem.qty),
+                    purchasePrice: billItem.price,
+                    salePrice: billItem.sellingPrice
+                });
             }
         }
         
@@ -300,9 +306,10 @@ export default function PurchasePage() {
                     <Table>
                         <TableHeader>
                             <TableRow>
-                                <TableHead className="w-[40%]">Item</TableHead>
+                                <TableHead className="w-[30%]">Item</TableHead>
                                 <TableHead>Qty</TableHead>
-                                <TableHead>Price</TableHead>
+                                <TableHead>Purchase Price</TableHead>
+                                <TableHead>Selling Price</TableHead>
                                 <TableHead>Subtotal</TableHead>
                                 <TableHead>Actions</TableHead>
                             </TableRow>
@@ -336,6 +343,9 @@ export default function PurchasePage() {
                                     </TableCell>
                                     <TableCell>
                                         <Input type="number" placeholder="0.00" value={item.price} onChange={(e) => handleBillItemChange(item.rowId, 'price', parseFloat(e.target.value) || 0)} />
+                                    </TableCell>
+                                     <TableCell>
+                                        <Input type="number" placeholder="0.00" value={item.sellingPrice} onChange={(e) => handleBillItemChange(item.rowId, 'sellingPrice', parseFloat(e.target.value) || 0)} />
                                     </TableCell>
                                     <TableCell>${(item.qty * item.price).toFixed(2)}</TableCell>
                                     <TableCell>

@@ -13,8 +13,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { ArrowLeft, Loader2, Camera } from 'lucide-react';
 import Link from 'next/link';
+import Image from 'next/image';
 
 const customerSchema = z.object({
   name: z.string().min(2, { message: "Customer name is required." }),
@@ -29,11 +30,44 @@ export default function NewCustomerPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [photoBase64, setPhotoBase64] = useState<string | null>(null);
 
   const form = useForm<CustomerFormValues>({
     resolver: zodResolver(customerSchema),
     defaultValues: { name: '', phone: '', address: '' },
   });
+
+  const handlePhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        if (!e.target?.result) return;
+        const img = document.createElement('img');
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const MAX_WIDTH = 512;
+            let width = img.width;
+            let height = img.height;
+
+            if (width > MAX_WIDTH) {
+                height = (height * MAX_WIDTH) / width;
+                width = MAX_WIDTH;
+            }
+
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+            ctx.drawImage(img, 0, 0, width, height);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+            setPhotoBase64(dataUrl);
+        };
+        img.src = e.target.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
 
   async function onSubmit(values: CustomerFormValues) {
     if (!user) {
@@ -42,12 +76,16 @@ export default function NewCustomerPage() {
     }
     setLoading(true);
     try {
-      await addDoc(collection(db, 'users', user.uid, 'customers'), {
+      const dataToSave: any = {
         ...values,
         totalCredit: 0,
         totalPaid: 0,
         createdAt: serverTimestamp(),
-      });
+      };
+      if (photoBase64) {
+        dataToSave.photoBase64 = photoBase64;
+      }
+      await addDoc(collection(db, 'users', user.uid, 'customers'), dataToSave);
       toast({ title: 'Customer created', description: `${values.name} has been added to your customer list.` });
       router.push('/dashboard/customers');
     } catch (error: any) {
@@ -114,6 +152,16 @@ export default function NewCustomerPage() {
                     </FormItem>
                   )}
                 />
+                 <FormItem>
+                    <FormLabel>Photo (Optional)</FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                        <Camera className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input type="file" accept="image/*" onChange={handlePhotoChange} className="pl-10" />
+                      </div>
+                    </FormControl>
+                    {photoBase64 && <Image src={photoBase64} alt="Preview" width={80} height={80} className="mt-2 rounded-md"/>}
+                </FormItem>
                 <div className="flex justify-end gap-2">
                     <Button type="button" variant="ghost" asChild>
                         <Link href="/dashboard/customers">Cancel</Link>
