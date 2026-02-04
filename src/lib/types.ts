@@ -48,17 +48,22 @@ export interface Customer {
     createdAt: Timestamp;
 }
 
-export interface Payment {
+// Represents a payment document in the subcollection
+export interface BillPayment {
+    id: string;
     amount: number;
-    date: Timestamp;
     method: 'Cash' | 'Card' | 'Online' | 'Other';
+    createdAt: Timestamp;
 }
 
-export interface CustomerBillItem {
+// Represents an item document in the subcollection
+export interface BillItem {
+    id: string;
     itemId: string;
     itemName: string;
     qty: number;
     rate: number;
+    total: number;
 }
 
 export interface CustomerBill {
@@ -66,13 +71,13 @@ export interface CustomerBill {
   customerId: string;
   billNumber: string;
   status: 'OPEN' | 'CLOSED';
-  items: CustomerBillItem[];
-  payments: Payment[];
+  // Items and Payments are now subcollections, not arrays.
   previousBalance: number;
   itemsTotal: number;
   grandTotal: number;
   totalPaid: number;
   remaining: number;
   createdAt: Timestamp;
+  updatedAt?: Timestamp;
   closedAt?: Timestamp;
 }

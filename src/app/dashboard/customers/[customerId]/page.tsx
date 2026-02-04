@@ -6,36 +6,25 @@ import { useAuth } from '@/hooks/use-auth';
 import { db } from '@/lib/firebase';
 import {
   doc,
-  getDoc,
   collection,
   query,
   where,
   orderBy,
   onSnapshot,
-  runTransaction,
-  serverTimestamp,
-  increment,
-  writeBatch,
 } from 'firebase/firestore';
-import type { Customer, CustomerBill, Payment } from '@/lib/types';
+import type { Customer, CustomerBill } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger, DialogClose } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, Loader2, IndianRupee, Landmark } from 'lucide-react';
+import { ArrowLeft, FileText } from 'lucide-react';
 import Link from 'next/link';
 
-const BillCard = ({ bill }: { bill: CustomerBill }) => {
+const BillCard = ({ bill, customerId }: { bill: CustomerBill, customerId: string }) => {
   const isBillOpen = bill.status === 'OPEN';
-  const grandTotal = bill.grandTotal;
-  const remaining = bill.remaining;
 
   return (
     <Card className={isBillOpen ? 'border-primary' : ''}>
@@ -62,7 +51,7 @@ const BillCard = ({ bill }: { bill: CustomerBill }) => {
             </div>
             <div className="font-bold text-base">
                 <p className="text-muted-foreground">Grand Total</p>
-                <p className="font-semibold">${grandTotal.toFixed(2)}</p>
+                <p className="font-semibold">${bill.grandTotal.toFixed(2)}</p>
             </div>
              <div className="font-bold text-base">
                 <p className="text-muted-foreground">Total Paid</p>
@@ -71,23 +60,17 @@ const BillCard = ({ bill }: { bill: CustomerBill }) => {
         </div>
         <div className="p-4 bg-muted rounded-lg text-center">
             <p className="text-muted-foreground">Remaining Balance</p>
-            <p className="text-2xl font-bold text-destructive">${remaining.toFixed(2)}</p>
+            <p className="text-2xl font-bold text-destructive">${bill.remaining.toFixed(2)}</p>
         </div>
-        
-        {bill.payments?.length > 0 && (
-          <div>
-            <h4 className="font-semibold mb-2">Payments</h4>
-            <ul className="space-y-2 text-sm">
-              {bill.payments.map((p, i) => (
-                 <li key={i} className="flex justify-between items-center bg-background p-2 rounded-md">
-                   <span>Paid ${p.amount.toFixed(2)} via {p.method}</span>
-                   <span className="text-xs text-muted-foreground">{format(p.date.toDate(), 'Pp')}</span>
-                 </li>
-              ))}
-            </ul>
-          </div>
-        )}
       </CardContent>
+       <CardFooter>
+        <Button asChild className="w-full">
+            <Link href={`/dashboard/customers/${customerId}/bill/${bill.id}`}>
+                <FileText className="mr-2 h-4 w-4" />
+                View Details
+            </Link>
+        </Button>
+      </CardFooter>
     </Card>
   )
 }
@@ -101,11 +84,6 @@ export default function CustomerLedgerPage() {
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [bills, setBills] = useState<CustomerBill[]>([]);
   const [loading, setLoading] = useState(true);
-  
-  const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
-  const [paymentAmount, setPaymentAmount] = useState<number | string>('');
-  const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'Card' | 'Online' | 'Other'>('Cash');
-  const [isSavingPayment, setIsSavingPayment] = useState(false);
 
   useEffect(() => {
     if (!user || !customerId) return;
@@ -142,58 +120,10 @@ export default function CustomerLedgerPage() {
     }
   }, [user, customerId, toast]);
 
-  const { openBill, totalBalance } = useMemo(() => {
-    const openBill = bills.find(b => b.status === 'OPEN') || null;
+  const { totalBalance } = useMemo(() => {
     const balance = customer ? (customer.totalCredit || 0) - (customer.totalPaid || 0) : 0;
-    return { openBill, totalBalance: balance };
-  }, [bills, customer]);
-
-
-  const handleAddPayment = async () => {
-    const amount = Number(paymentAmount);
-    if (!user || !openBill || !amount || amount <= 0) {
-      toast({ variant: 'destructive', title: 'Invalid payment amount' });
-      return;
-    }
-    setIsSavingPayment(true);
-    try {
-      const customerRef = doc(db, 'users', user.uid, 'customers', customerId);
-      const billRef = doc(db, 'users', user.uid, 'bills', openBill.id);
-
-      await runTransaction(db, async (transaction) => {
-        const billDoc = await transaction.get(billRef);
-        if (!billDoc.exists()) throw new Error("Bill does not exist!");
-
-        const billData = billDoc.data() as CustomerBill;
-        const newPayment: Payment = {
-            amount: amount,
-            date: serverTimestamp() as Timestamp,
-            method: paymentMethod,
-        };
-
-        const newTotalPaid = billData.totalPaid + amount;
-        
-        transaction.update(billRef, {
-            payments: [...billData.payments, newPayment],
-            totalPaid: newTotalPaid,
-            remaining: billData.grandTotal - newTotalPaid,
-        });
-
-        transaction.update(customerRef, {
-            totalPaid: increment(amount),
-        });
-      });
-      
-      toast({ title: 'Payment added successfully' });
-      setIsPaymentDialogOpen(false);
-      setPaymentAmount('');
-    } catch (e: any) {
-        console.error("Payment failed: ", e);
-        toast({ variant: 'destructive', title: 'Payment failed', description: e.message });
-    } finally {
-        setIsSavingPayment(false);
-    }
-  }
+    return { totalBalance: balance };
+  }, [customer]);
 
   const getInitials = (name: string) => (name || '').substring(0, 2).toUpperCase();
 
@@ -232,53 +162,11 @@ export default function CustomerLedgerPage() {
       
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-2xl font-semibold">Bill History</h2>
-        {openBill && (
-          <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Landmark className="mr-2 h-4 w-4" /> Add Payment (Wasooli)
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Add Payment to Open Bill</DialogTitle>
-                <DialogDescription>Enter the amount received from the customer.</DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div>
-                  <Label htmlFor="amount">Amount</Label>
-                  <Input id="amount" type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} placeholder="0.00" />
-                </div>
-                 <div>
-                  <Label htmlFor="method">Payment Method</Label>
-                  <Select value={paymentMethod} onValueChange={(v: any) => setPaymentMethod(v)}>
-                    <SelectTrigger id="method">
-                      <SelectValue placeholder="Select method" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Cash">Cash</SelectItem>
-                      <SelectItem value="Card">Card</SelectItem>
-                      <SelectItem value="Online">Online</SelectItem>
-                      <SelectItem value="Other">Other</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <DialogFooter>
-                <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                <Button onClick={handleAddPayment} disabled={isSavingPayment}>
-                    {isSavingPayment && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-                    Save Payment
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        )}
       </div>
 
       <div className="space-y-4">
         {bills.length > 0 ? (
-          bills.map(bill => <BillCard key={bill.id} bill={bill} />)
+          bills.map(bill => <BillCard key={bill.id} bill={bill} customerId={customerId} />)
         ) : (
           <Card className="flex items-center justify-center h-48 border-dashed">
             <CardContent className="text-center">

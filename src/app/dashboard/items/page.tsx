@@ -20,7 +20,6 @@ import {
   where,
   limit,
   runTransaction,
-  writeBatch,
 } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import {
@@ -55,7 +54,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { PlusCircle, Pencil, Trash2, Loader2, UserPlus } from 'lucide-react';
-import type { Item, Customer, CustomerBill, CustomerBillItem, Payment } from '@/lib/types';
+import type { Item, Customer, CustomerBill } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
 import Image from 'next/image';
 
@@ -240,66 +239,100 @@ export default function ItemsPage() {
     setIsSavingSale(true);
     try {
         await runTransaction(db, async (transaction) => {
-            const userBillsRef = collection(db, 'users', user.uid, 'bills');
-            const openBillQuery = query(userBillsRef, where('customerId', '==', selectedCustomerId), where('status', '==', 'OPEN'), limit(1));
-            const openBillSnapshot = await getDocs(openBillQuery);
-            
-            const batch = writeBatch(db);
-
+            // 1. Update stock quantities for all sold items
             for (const item of saleItems) {
                 const itemRef = doc(db, 'users', user.uid, 'items', item.itemId);
                 const itemSnap = await transaction.get(itemRef);
-                if (!itemSnap.exists() || itemSnap.data().stockQty < item.qty) throw new Error(`Not enough stock for ${item.itemName}.`);
+                if (!itemSnap.exists() || itemSnap.data().stockQty < item.qty) {
+                    throw new Error(`Not enough stock for ${item.itemName}.`);
+                }
                 transaction.update(itemRef, { stockQty: increment(-item.qty) });
             }
 
-            const newBillItems: CustomerBillItem[] = saleItems.map(({ itemId, itemName, qty, rate }) => ({ itemId, itemName, qty, rate }));
-            const newPayment: Payment | null = paymentGiven > 0 ? { amount: paymentGiven, date: serverTimestamp(), method: 'Cash' } : null;
+            // 2. Find the customer's open bill or prepare to create a new one
+            const userBillsRef = collection(db, 'users', user.uid, 'bills');
+            const openBillQuery = query(userBillsRef, where('customerId', '==', selectedCustomerId), where('status', '==', 'OPEN'), limit(1));
+            const openBillSnapshot = await getDocs(openBillQuery);
+
+            let billRef;
+            let currentBillData;
 
             if (openBillSnapshot.docs.length > 0) {
+                // An open bill exists
                 const openBillDoc = openBillSnapshot.docs[0];
-                const billData = openBillDoc.data() as CustomerBill;
-                const updatedItemsTotal = billData.itemsTotal + saleSummary.itemsTotal;
-                const updatedGrandTotal = billData.grandTotal + saleSummary.itemsTotal;
-                const updatedTotalPaid = billData.totalPaid + (newPayment?.amount || 0);
-                
-                transaction.update(openBillDoc.ref, {
-                    items: [...billData.items, ...newBillItems],
-                    payments: newPayment ? [...billData.payments, newPayment] : billData.payments,
-                    itemsTotal: updatedItemsTotal,
-                    grandTotal: updatedGrandTotal,
-                    totalPaid: updatedTotalPaid,
-                    remaining: updatedGrandTotal - updatedTotalPaid,
-                    updatedAt: serverTimestamp()
-                });
+                billRef = openBillDoc.ref;
+                currentBillData = openBillDoc.data() as CustomerBill;
             } else {
+                // No open bill, create a new one
                 const customerRef = doc(db, 'users', user.uid, 'customers', selectedCustomerId);
                 const customerSnap = await transaction.get(customerRef);
                 const customerData = customerSnap.data() as Customer;
                 const previousBalance = (customerData.totalCredit || 0) - (customerData.totalPaid || 0);
-                
-                const grandTotal = previousBalance + saleSummary.itemsTotal;
-                const totalPaid = newPayment?.amount || 0;
 
-                const newBillRef = doc(userBillsRef);
-                transaction.set(newBillRef, {
-                    id: newBillRef.id,
+                billRef = doc(userBillsRef);
+                currentBillData = {
+                    id: billRef.id,
                     customerId: selectedCustomerId,
-                    billNumber: Date.now().toString().slice(-6), status: 'OPEN',
-                    items: newBillItems, payments: newPayment ? [newPayment] : [],
-                    previousBalance,
-                    itemsTotal: saleSummary.itemsTotal,
-                    grandTotal: grandTotal,
-                    totalPaid: totalPaid,
-                    remaining: grandTotal - totalPaid,
+                    billNumber: Date.now().toString().slice(-6),
+                    status: 'OPEN',
+                    previousBalance: previousBalance,
+                    itemsTotal: 0,
+                    totalPaid: 0,
+                    grandTotal: previousBalance,
+                    remaining: previousBalance,
+                    createdAt: serverTimestamp(),
+                };
+            }
+
+            // 3. Add new items to the bill's subcollection
+            const itemsSubcollectionRef = collection(billRef, 'items');
+            for (const item of saleItems) {
+                const newItemRef = doc(itemsSubcollectionRef);
+                transaction.set(newItemRef, {
+                    itemId: item.itemId,
+                    itemName: item.itemName,
+                    qty: item.qty,
+                    rate: item.rate,
+                    total: item.qty * item.rate,
+                });
+            }
+
+            // 4. Add payment to the bill's subcollection, if provided
+            const paymentAmount = paymentGiven || 0;
+            if (paymentAmount > 0) {
+                const paymentsSubcollectionRef = collection(billRef, 'payments');
+                const newPaymentRef = doc(paymentsSubcollectionRef);
+                transaction.set(newPaymentRef, {
+                    amount: paymentAmount,
+                    method: 'Cash', // Or get from form
                     createdAt: serverTimestamp(),
                 });
             }
 
+            // 5. Update the bill's totals
+            const newItemsTotal = currentBillData.itemsTotal + saleSummary.itemsTotal;
+            const newTotalPaid = currentBillData.totalPaid + paymentAmount;
+            const newGrandTotal = currentBillData.previousBalance + newItemsTotal;
+
+            const billUpdateData = {
+                itemsTotal: newItemsTotal,
+                totalPaid: newTotalPaid,
+                grandTotal: newGrandTotal,
+                remaining: newGrandTotal - newTotalPaid,
+                updatedAt: serverTimestamp(),
+            };
+
+            if (openBillSnapshot.docs.length > 0) {
+                transaction.update(billRef, billUpdateData);
+            } else {
+                transaction.set(billRef, { ...currentBillData, ...billUpdateData });
+            }
+
+            // 6. Update the customer's aggregate totals
             const customerRef = doc(db, 'users', user.uid, 'customers', selectedCustomerId);
             transaction.update(customerRef, {
                 totalCredit: increment(saleSummary.itemsTotal),
-                totalPaid: increment(paymentGiven || 0)
+                totalPaid: increment(paymentAmount)
             });
         });
         toast({ title: "Sale Saved!", description: "The bill has been updated." });
