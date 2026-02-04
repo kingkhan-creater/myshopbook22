@@ -273,8 +273,8 @@ export default function ItemsPage() {
   }
 
   const handleSaveSale = async () => {
-    if (!user || !selectedCustomerId || saleItems.length === 0 || saleItems.some(i => !i.itemId || i.qty <= 0)) {
-        toast({ variant: 'destructive', title: 'Validation Error', description: 'Please select a customer and add valid items.'});
+    if (!user || !selectedCustomerId || saleItems.length === 0 || saleItems.some(i => !i.itemId || i.qty <= 0 || i.rate <=0)) {
+        toast({ variant: 'destructive', title: 'Validation Error', description: 'Please select a customer and add valid items with a quantity and rate greater than 0.'});
         return;
     }
     setIsSavingSale(true);
