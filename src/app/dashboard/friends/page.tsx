@@ -176,7 +176,7 @@ export default function FriendsPage() {
             <li key={userProfile.uid} className="flex items-center justify-between rounded-lg border p-4">
               <div className="flex items-center gap-4">
                 <Avatar>
-                  <AvatarImage src={userProfile.photoUrl} />
+                  <AvatarImage src={userProfile.photoUrl ?? undefined} />
                   <AvatarFallback>{getInitials(userProfile.fullName)}</AvatarFallback>
                 </Avatar>
                 <div>

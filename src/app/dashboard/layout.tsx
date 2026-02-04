@@ -194,7 +194,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-10 w-10 rounded-full">
                 <Avatar className="h-10 w-10 border-2 border-primary">
-                  <AvatarImage src={photoURL || user.photoURL || ''} alt="Profile Photo" />
+                  <AvatarImage src={photoURL ?? ''} alt="Profile Photo" />
                   <AvatarFallback className="bg-primary text-primary-foreground">
                     {getInitials(user.email)}
                   </AvatarFallback>
