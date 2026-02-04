@@ -291,30 +291,45 @@ export default function ItemsPage() {
         return;
     }
     setIsSavingSale(true);
+    
+    const userBillsRef = collection(db, 'users', user.uid, 'bills');
+    const openBillQuery = query(userBillsRef, where('customerId', '==', selectedCustomerId), where('status', '==', 'OPEN'), limit(1));
+
     try {
+        // Query for the open bill *before* the transaction starts.
+        const openBillSnapshot = await getDocs(openBillQuery);
+        const openBillDoc = openBillSnapshot.docs.length > 0 ? openBillSnapshot.docs[0] : null;
+
         await runTransaction(db, async (transaction) => {
             // =================================================================
             // 1. READ PHASE - All reads must happen before any writes.
             // =================================================================
             
-            const itemRefs = saleItems.map(item => doc(db, 'users', user.uid, 'items', item.itemId));
-            const itemSnaps = await Promise.all(itemRefs.map(ref => transaction.get(ref)));
-
-            const userBillsRef = collection(db, 'users', user.uid, 'bills');
-            const openBillQuery = query(userBillsRef, where('customerId', '==', selectedCustomerId), where('status', '==', 'OPEN'), limit(1));
-            const openBillSnapshot = await transaction.get(openBillQuery);
-            
             const customerRef = doc(db, 'users', user.uid, 'customers', selectedCustomerId);
             const customerSnap = await transaction.get(customerRef);
-
-            // =================================================================
-            // 2. VALIDATION & CALCULATION PHASE - No more reads or writes.
-            // =================================================================
-            
             if (!customerSnap.exists()) {
                 throw new Error("Customer not found.");
             }
 
+            const itemRefs = saleItems.map(item => doc(db, 'users', user.uid, 'items', item.itemId));
+            const itemSnaps = await Promise.all(itemRefs.map(ref => transaction.get(ref)));
+
+            let billRef;
+            let currentBillSnap = null;
+            if (openBillDoc) {
+                billRef = openBillDoc.ref;
+                currentBillSnap = await transaction.get(billRef); // Re-read inside transaction for consistency
+            }
+            
+            // =================================================================
+            // 2. VALIDATION & CALCULATION PHASE
+            // =================================================================
+            
+            // Validate that the bill we found is still open
+            if (currentBillSnap && currentBillSnap.data()?.status !== 'OPEN') {
+                throw new Error("The customer's open bill was recently closed. Please try again.");
+            }
+            
             for (let i = 0; i < saleItems.length; i++) {
                 const saleItem = saleItems[i];
                 const itemSnap = itemSnaps[i];
@@ -323,16 +338,17 @@ export default function ItemsPage() {
                 }
             }
             
-            let billRef;
             let currentBillData: CustomerBill;
             let isNewBill = false;
             
-            if (openBillSnapshot.empty) {
+            if (currentBillSnap && currentBillSnap.exists()) {
+                 currentBillData = currentBillSnap.data() as CustomerBill;
+            } else {
                 isNewBill = true;
+                billRef = doc(userBillsRef); // Create a new ref for the new bill
                 const customerData = customerSnap.data() as Customer;
                 const previousBalance = (customerData.totalCredit || 0) - (customerData.totalPaid || 0);
 
-                billRef = doc(userBillsRef);
                 currentBillData = {
                     id: billRef.id,
                     customerId: selectedCustomerId,
@@ -344,10 +360,6 @@ export default function ItemsPage() {
                     grandTotal: previousBalance,
                     remaining: previousBalance,
                 } as Omit<CustomerBill, 'createdAt' | 'updatedAt' | 'closedAt'> as CustomerBill;
-            } else {
-                const openBillDoc = openBillSnapshot.docs[0];
-                billRef = openBillDoc.ref;
-                currentBillData = openBillDoc.data() as CustomerBill;
             }
 
             let newItemsTotalForThisSale = 0;
@@ -382,6 +394,11 @@ export default function ItemsPage() {
             // =================================================================
             // 3. WRITE PHASE - All writes happen here.
             // =================================================================
+            
+            if (!billRef) {
+                // This case should be handled by the logic above, but as a safeguard:
+                throw new Error("Bill reference could not be determined. Transaction failed.");
+            }
 
             for (let i = 0; i < saleItems.length; i++) {
                 const saleItem = saleItems[i];
@@ -400,7 +417,7 @@ export default function ItemsPage() {
                 const newPaymentRef = doc(paymentsSubcollectionRef);
                 transaction.set(newPaymentRef, {
                     amount: paymentAmount,
-                    method: 'Cash',
+                    method: 'Cash', // Default method
                     createdAt: serverTimestamp(),
                 });
             }
@@ -420,7 +437,7 @@ export default function ItemsPage() {
         toast({ title: "Sale Saved!", description: "The bill has been updated." });
         setIsSellDialogOpen(false);
     } catch (e: any) {
-        console.error(e);
+        console.error("Transaction Failed:", e);
         toast({ variant: 'destructive', title: "Transaction Failed", description: e.message || "Could not save sale." });
     } finally {
         setIsSavingSale(false);
@@ -432,7 +449,7 @@ export default function ItemsPage() {
         <CardContent className="p-4 flex-grow">
             {item.photoBase64 ? (
                 <div className="relative w-full h-32 mb-4 rounded-md overflow-hidden">
-                    <Image src={item.photoBase64} alt={item.name} layout="fill" objectFit="cover" />
+                    <Image src={item.photoBase64} alt={item.name} fill objectFit="cover" />
                 </div>
             ) : (
               <div className="relative w-full h-32 mb-4 rounded-md overflow-hidden bg-muted flex items-center justify-center">
