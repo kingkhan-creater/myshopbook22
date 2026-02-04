@@ -11,6 +11,25 @@ export interface Item {
   createdAt: Timestamp;
 }
 
+export interface ItemSnapshot {
+  name: string;
+  salePrice: number;
+  photoBase64?: string;
+}
+
+export interface Message {
+  id: string;
+  senderId: string;
+  createdAt: Timestamp;
+  text?: string;
+  itemSnapshot?: ItemSnapshot;
+  photoUrl?: string; // base64 data URI
+  // Future fields
+  deletedFor?: string[];
+  isDeleted?: boolean;
+}
+
+
 export interface Supplier {
   id: string;
   name: string;
