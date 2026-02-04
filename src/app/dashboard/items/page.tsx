@@ -108,7 +108,14 @@ export default function ItemsPage() {
   const [isSavingSale, setIsSavingSale] = useState(false);
 
   const form = useForm<ItemFormValues>({ resolver: zodResolver(itemSchema) });
-  const addCustomerForm = useForm<CustomerFormValues>({ resolver: zodResolver(customerSchema) });
+  const addCustomerForm = useForm<CustomerFormValues>({ 
+    resolver: zodResolver(customerSchema),
+    defaultValues: {
+      name: '',
+      phone: '',
+      address: '',
+    }
+  });
 
   // Fetch Items in real-time
   useEffect(() => {
@@ -158,7 +165,7 @@ export default function ItemsPage() {
         purchasePrice: item.purchasePrice,
         salePrice: item.salePrice,
         stockQty: item.stockQty,
-        supplier: item.supplier
+        supplier: item.supplier || ''
     });
     setIsFormOpen(true);
   }
