@@ -1,5 +1,5 @@
 import { getApp, getApps, initializeApp } from 'firebase/app';
-import { getAuth, setPersistence, browserLocalPersistence } from 'firebase/auth';
+import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
@@ -16,8 +16,7 @@ const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// Explicitly set persistence to local.
-// This ensures the user remains logged in across browser sessions.
-setPersistence(auth, browserLocalPersistence);
+// browserLocalPersistence is the default for web, so we don't need to set it explicitly.
+// This avoids a potential race condition on app startup.
 
 export { app, auth, db };
