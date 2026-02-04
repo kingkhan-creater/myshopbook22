@@ -15,6 +15,7 @@ import {
   updateDoc,
   increment,
   arrayUnion,
+  Timestamp,
 } from 'firebase/firestore';
 import type { Supplier, PurchaseBill, PurchaseBillItem, SupplierPayment } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
@@ -95,17 +96,13 @@ export default function PurchaseBillDetailPage() {
       const billRef = doc(db, 'users', user.uid, 'purchaseBills', billId);
       const supplierRef = doc(db, 'users', user.uid, 'suppliers', bill.supplierId);
       
-      const newPayment: SupplierPayment = {
+      const newPaymentForArray: SupplierPayment = {
           amount: amount,
           method: paymentMethod,
-          createdAt: serverTimestamp() as Timestamp,
+          createdAt: new Timestamp(Date.now() / 1000, 0),
       };
 
       const batch = writeBatch(db);
-
-      // We use arrayUnion to add to the payments array, but Firestore timestamps need to be applied on the client for this.
-      // So we'll create a client-side timestamp for the array and use serverTimestamp for the update.
-      const newPaymentForArray = {...newPayment, createdAt: new Timestamp(Date.now() / 1000, 0) };
 
       batch.update(billRef, {
           paymentGiven: increment(amount),
