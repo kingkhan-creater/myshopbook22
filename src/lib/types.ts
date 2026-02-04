@@ -21,6 +21,12 @@ export interface Supplier {
   createdAt: Timestamp;
 }
 
+export interface SupplierPayment {
+  amount: number;
+  method: string;
+  createdAt: Timestamp;
+}
+
 export interface PurchaseBillItem {
   itemId: string; // Can be 'new' for a new item
   itemName: string;
@@ -34,12 +40,13 @@ export interface PurchaseBill {
   billDate: Timestamp;
   items: PurchaseBillItem[];
   totalAmount: number;
-  paymentGiven: number;
+  paymentGiven: number; // This is the total paid for this specific bill
+  payments?: SupplierPayment[]; // History of payments for this bill
   createdAt: Timestamp;
 }
 
 export interface Customer {
-    id: string;
+    id:string;
     name: string;
     phone?: string;
     address?: string;
