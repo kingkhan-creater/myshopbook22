@@ -20,6 +20,8 @@ import {
   where,
   limit,
   runTransaction,
+  setDoc,
+  getDoc,
 } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import {
@@ -53,11 +55,13 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { PlusCircle, Pencil, Trash2, Loader2, UserPlus, Camera, Package } from 'lucide-react';
+import { PlusCircle, Pencil, Loader2, UserPlus, Camera, Package } from 'lucide-react';
 import type { Item, Customer, CustomerBill } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
 import Image from 'next/image';
 import Link from 'next/link';
+import { Trash2 } from 'lucide-react';
+
 
 const itemSchema = z.object({
   name: z.string().min(2, { message: 'Item name is required.' }),
@@ -296,40 +300,45 @@ export default function ItemsPage() {
     const openBillQuery = query(userBillsRef, where('customerId', '==', selectedCustomerId), where('status', '==', 'OPEN'), limit(1));
 
     try {
-        // Query for the open bill *before* the transaction starts.
         const openBillSnapshot = await getDocs(openBillQuery);
-        const openBillDoc = openBillSnapshot.docs.length > 0 ? openBillSnapshot.docs[0] : null;
+        let billRef:any;
+        const isNewBill = openBillSnapshot.empty;
+
+        if (isNewBill) {
+            const customerRef = doc(db, 'users', user.uid, 'customers', selectedCustomerId);
+            const customerSnap = await getDoc(customerRef);
+            if (!customerSnap.exists()) throw new Error("Customer not found.");
+            
+            const customerData = customerSnap.data() as Customer;
+            const previousBalance = (customerData.totalCredit || 0) - (customerData.totalPaid || 0);
+
+            billRef = doc(userBillsRef);
+            await setDoc(billRef, {
+                id: billRef.id,
+                customerId: selectedCustomerId,
+                billNumber: Date.now().toString().slice(-6),
+                status: 'OPEN',
+                previousBalance: previousBalance,
+                itemsTotal: 0,
+                totalPaid: 0,
+                grandTotal: previousBalance,
+                remaining: previousBalance,
+                createdAt: serverTimestamp(),
+            });
+        } else {
+            billRef = openBillSnapshot.docs[0].ref;
+        }
 
         await runTransaction(db, async (transaction) => {
-            // =================================================================
-            // 1. READ PHASE - All reads must happen before any writes.
-            // =================================================================
-            
-            const customerRef = doc(db, 'users', user.uid, 'customers', selectedCustomerId);
-            const customerSnap = await transaction.get(customerRef);
-            if (!customerSnap.exists()) {
-                throw new Error("Customer not found.");
+            const currentBillSnap = await transaction.get(billRef);
+            if (!currentBillSnap.exists()) {
+                throw new Error("Bill could not be found or created. Please try again.");
             }
 
+            const customerRef = doc(db, 'users', user.uid, 'customers', selectedCustomerId);
             const itemRefs = saleItems.map(item => doc(db, 'users', user.uid, 'items', item.itemId));
             const itemSnaps = await Promise.all(itemRefs.map(ref => transaction.get(ref)));
 
-            let billRef;
-            let currentBillSnap = null;
-            if (openBillDoc) {
-                billRef = openBillDoc.ref;
-                currentBillSnap = await transaction.get(billRef); // Re-read inside transaction for consistency
-            }
-            
-            // =================================================================
-            // 2. VALIDATION & CALCULATION PHASE
-            // =================================================================
-            
-            // Validate that the bill we found is still open
-            if (currentBillSnap && currentBillSnap.data()?.status !== 'OPEN') {
-                throw new Error("The customer's open bill was recently closed. Please try again.");
-            }
-            
             for (let i = 0; i < saleItems.length; i++) {
                 const saleItem = saleItems[i];
                 const itemSnap = itemSnaps[i];
@@ -338,30 +347,8 @@ export default function ItemsPage() {
                 }
             }
             
-            let currentBillData: CustomerBill;
-            let isNewBill = false;
+            const currentBillData = currentBillSnap.data() as CustomerBill;
             
-            if (currentBillSnap && currentBillSnap.exists()) {
-                 currentBillData = currentBillSnap.data() as CustomerBill;
-            } else {
-                isNewBill = true;
-                billRef = doc(userBillsRef); // Create a new ref for the new bill
-                const customerData = customerSnap.data() as Customer;
-                const previousBalance = (customerData.totalCredit || 0) - (customerData.totalPaid || 0);
-
-                currentBillData = {
-                    id: billRef.id,
-                    customerId: selectedCustomerId,
-                    billNumber: Date.now().toString().slice(-6),
-                    status: 'OPEN',
-                    previousBalance: previousBalance,
-                    itemsTotal: 0,
-                    totalPaid: 0,
-                    grandTotal: previousBalance,
-                    remaining: previousBalance,
-                } as Omit<CustomerBill, 'createdAt' | 'updatedAt' | 'closedAt'> as CustomerBill;
-            }
-
             let newItemsTotalForThisSale = 0;
             const billItemsToAdd = saleItems.map(item => {
                 const total = (item.qty * item.rate) - (item.discount || 0);
@@ -378,32 +365,16 @@ export default function ItemsPage() {
             
             const paymentAmount = paymentGiven || 0;
 
-            const finalItemsTotal = currentBillData.itemsTotal + newItemsTotalForThisSale;
-            const finalTotalPaid = currentBillData.totalPaid + paymentAmount;
-            const finalGrandTotal = currentBillData.previousBalance + finalItemsTotal;
-            const finalRemaining = finalGrandTotal - finalTotalPaid;
-
             const billUpdateData = {
-                itemsTotal: finalItemsTotal,
-                totalPaid: finalTotalPaid,
-                grandTotal: finalGrandTotal,
-                remaining: finalRemaining,
+                itemsTotal: increment(newItemsTotalForThisSale),
+                totalPaid: increment(paymentAmount),
+                grandTotal: increment(newItemsTotalForThisSale),
+                remaining: increment(newItemsTotalForThisSale - paymentAmount),
                 updatedAt: serverTimestamp(),
             };
 
-            // =================================================================
-            // 3. WRITE PHASE - All writes happen here.
-            // =================================================================
-            
-            if (!billRef) {
-                // This case should be handled by the logic above, but as a safeguard:
-                throw new Error("Bill reference could not be determined. Transaction failed.");
-            }
-
             for (let i = 0; i < saleItems.length; i++) {
-                const saleItem = saleItems[i];
-                const itemRef = itemRefs[i];
-                transaction.update(itemRef, { stockQty: increment(-saleItem.qty) });
+                transaction.update(itemRefs[i], { stockQty: increment(-saleItems[i].qty) });
             }
 
             const itemsSubcollectionRef = collection(billRef, 'items');
@@ -417,16 +388,12 @@ export default function ItemsPage() {
                 const newPaymentRef = doc(paymentsSubcollectionRef);
                 transaction.set(newPaymentRef, {
                     amount: paymentAmount,
-                    method: 'Cash', // Default method
+                    method: 'Cash', 
                     createdAt: serverTimestamp(),
                 });
             }
 
-            if (isNewBill) {
-                transaction.set(billRef, { ...currentBillData, ...billUpdateData, createdAt: serverTimestamp(), id: billRef.id });
-            } else {
-                transaction.update(billRef, billUpdateData);
-            }
+            transaction.update(billRef, billUpdateData);
             
             transaction.update(customerRef, {
                 totalCredit: increment(newItemsTotalForThisSale),
@@ -449,7 +416,7 @@ export default function ItemsPage() {
         <CardContent className="p-4 flex-grow">
             {item.photoBase64 ? (
                 <div className="relative w-full h-32 mb-4 rounded-md overflow-hidden">
-                    <Image src={item.photoBase64} alt={item.name} fill objectFit="cover" />
+                    <Image src={item.photoBase64} alt={item.name} layout="fill" objectFit="cover" />
                 </div>
             ) : (
               <div className="relative w-full h-32 mb-4 rounded-md overflow-hidden bg-muted flex items-center justify-center">
