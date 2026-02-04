@@ -64,7 +64,6 @@ const itemSchema = z.object({
   purchasePrice: z.coerce.number().min(0, { message: 'Purchase price must be a positive number.' }),
   salePrice: z.coerce.number().min(0, { message: 'Sale price must be a positive number.' }),
   stockQty: z.coerce.number().int().min(0, { message: 'Stock quantity must be a whole number.' }),
-  supplier: z.string().optional(),
 });
 type ItemFormValues = z.infer<typeof itemSchema>;
 
@@ -165,7 +164,6 @@ export default function ItemsPage() {
         purchasePrice: item.purchasePrice,
         salePrice: item.salePrice,
         stockQty: item.stockQty,
-        supplier: item.supplier || ''
     });
     setIsFormOpen(true);
   }
@@ -413,9 +411,6 @@ export default function ItemsPage() {
                 <p className="text-xl font-bold text-primary">${item.salePrice.toFixed(2)}</p>
                 <p className="text-xs text-muted-foreground">Cost: ${item.purchasePrice.toFixed(2)}</p>
             </div>
-            {item.supplier && (
-                 <p className="text-xs text-muted-foreground mt-2">Supplier: {item.supplier}</p>
-            )}
         </CardContent>
         <CardFooter className="p-2 border-t">
             <div className="w-full flex gap-2">
@@ -468,7 +463,6 @@ export default function ItemsPage() {
                         <FormField control={form.control} name="purchasePrice" render={({ field }) => ( <FormItem><FormLabel>Purchase Price</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem> )} />
                         <FormField control={form.control} name="salePrice" render={({ field }) => ( <FormItem><FormLabel>Sale Price</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem> )} />
                         <FormField control={form.control} name="stockQty" render={({ field }) => ( <FormItem><FormLabel>Stock Quantity</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem> )} />
-                        <FormField control={form.control} name="supplier" render={({ field }) => ( <FormItem><FormLabel>Supplier</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />
                         <FormItem>
                             <FormLabel>Item Photo</FormLabel>
                             <FormControl>
