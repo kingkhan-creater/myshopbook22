@@ -17,7 +17,8 @@ import {
   orderBy,
   Timestamp,
   updateDoc,
-  increment
+  increment,
+  where
 } from 'firebase/firestore';
 import type { Customer, CustomerBill, BillItem, BillPayment, Item } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
@@ -400,3 +401,5 @@ export default function BillDetailPage() {
     </div>
   );
 }
+
+    
