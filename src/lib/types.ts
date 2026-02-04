@@ -62,14 +62,17 @@ export interface CustomerBillItem {
 }
 
 export interface CustomerBill {
-    id: string;
-    billNumber: string;
-    status: 'OPEN' | 'CLOSED';
-    items: CustomerBillItem[];
-    payments: Payment[];
-    previousBalance: number;
-    totalAmount: number;
-    totalPaid: number;
-    createdAt: Timestamp;
-    updatedAt: Timestamp;
+  id: string;
+  customerId: string;
+  billNumber: string;
+  status: 'OPEN' | 'CLOSED';
+  items: CustomerBillItem[];
+  payments: Payment[];
+  previousBalance: number;
+  itemsTotal: number;
+  grandTotal: number;
+  totalPaid: number;
+  remaining: number;
+  createdAt: Timestamp;
+  closedAt?: Timestamp;
 }

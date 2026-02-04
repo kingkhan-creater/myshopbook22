@@ -20,6 +20,7 @@ import {
   where,
   limit,
   runTransaction,
+  writeBatch,
 } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import {
@@ -209,8 +210,8 @@ export default function ItemsPage() {
   const handleRemoveSaleItemRow = (rowId: string) => setSaleItems(saleItems.filter(item => item.rowId !== rowId));
 
   const saleSummary = useMemo(() => {
-    const grandTotal = saleItems.reduce((sum, item) => sum + (Number(item.qty) || 0) * (Number(item.rate) || 0), 0);
-    return { grandTotal, remaining: grandTotal - (Number(paymentGiven) || 0) };
+    const itemsTotal = saleItems.reduce((sum, item) => sum + (Number(item.qty) || 0) * (Number(item.rate) || 0), 0);
+    return { itemsTotal, remaining: itemsTotal - (Number(paymentGiven) || 0) };
   }, [saleItems, paymentGiven]);
 
   const handleSaveCustomer = async (values: CustomerFormValues) => {
@@ -239,9 +240,12 @@ export default function ItemsPage() {
     setIsSavingSale(true);
     try {
         await runTransaction(db, async (transaction) => {
-            const openBillQuery = query(collection(db, 'users', user.uid, 'customers', selectedCustomerId, 'bills'), where('status', '==', 'OPEN'), limit(1));
+            const userBillsRef = collection(db, 'users', user.uid, 'bills');
+            const openBillQuery = query(userBillsRef, where('customerId', '==', selectedCustomerId), where('status', '==', 'OPEN'), limit(1));
             const openBillSnapshot = await getDocs(openBillQuery);
             
+            const batch = writeBatch(db);
+
             for (const item of saleItems) {
                 const itemRef = doc(db, 'users', user.uid, 'items', item.itemId);
                 const itemSnap = await transaction.get(itemRef);
@@ -255,36 +259,53 @@ export default function ItemsPage() {
             if (openBillSnapshot.docs.length > 0) {
                 const openBillDoc = openBillSnapshot.docs[0];
                 const billData = openBillDoc.data() as CustomerBill;
+                const updatedItemsTotal = billData.itemsTotal + saleSummary.itemsTotal;
+                const updatedGrandTotal = billData.grandTotal + saleSummary.itemsTotal;
+                const updatedTotalPaid = billData.totalPaid + (newPayment?.amount || 0);
+                
                 transaction.update(openBillDoc.ref, {
                     items: [...billData.items, ...newBillItems],
                     payments: newPayment ? [...billData.payments, newPayment] : billData.payments,
-                    totalAmount: billData.totalAmount + saleSummary.grandTotal,
-                    totalPaid: billData.totalPaid + (paymentGiven || 0),
+                    itemsTotal: updatedItemsTotal,
+                    grandTotal: updatedGrandTotal,
+                    totalPaid: updatedTotalPaid,
+                    remaining: updatedGrandTotal - updatedTotalPaid,
                     updatedAt: serverTimestamp()
                 });
             } else {
                 const customerRef = doc(db, 'users', user.uid, 'customers', selectedCustomerId);
                 const customerSnap = await transaction.get(customerRef);
-                const previousBalance = ((customerSnap.data()?.totalCredit || 0) - (customerSnap.data()?.totalPaid || 0));
+                const customerData = customerSnap.data() as Customer;
+                const previousBalance = (customerData.totalCredit || 0) - (customerData.totalPaid || 0);
                 
-                const newBillRef = doc(collection(db, 'users', user.uid, 'customers', selectedCustomerId, 'bills'));
+                const grandTotal = previousBalance + saleSummary.itemsTotal;
+                const totalPaid = newPayment?.amount || 0;
+
+                const newBillRef = doc(userBillsRef);
                 transaction.set(newBillRef, {
+                    id: newBillRef.id,
+                    customerId: selectedCustomerId,
                     billNumber: Date.now().toString().slice(-6), status: 'OPEN',
                     items: newBillItems, payments: newPayment ? [newPayment] : [],
-                    previousBalance, totalAmount: saleSummary.grandTotal, totalPaid: paymentGiven || 0,
-                    createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
+                    previousBalance,
+                    itemsTotal: saleSummary.itemsTotal,
+                    grandTotal: grandTotal,
+                    totalPaid: totalPaid,
+                    remaining: grandTotal - totalPaid,
+                    createdAt: serverTimestamp(),
                 });
             }
 
             const customerRef = doc(db, 'users', user.uid, 'customers', selectedCustomerId);
             transaction.update(customerRef, {
-                totalCredit: increment(saleSummary.grandTotal),
+                totalCredit: increment(saleSummary.itemsTotal),
                 totalPaid: increment(paymentGiven || 0)
             });
         });
         toast({ title: "Sale Saved!", description: "The bill has been updated." });
         setIsSellDialogOpen(false);
     } catch (e: any) {
+        console.error(e);
         toast({ variant: 'destructive', title: "Transaction Failed", description: e.message || "Could not save sale." });
     } finally {
         setIsSavingSale(false);
@@ -393,7 +414,7 @@ export default function ItemsPage() {
                         <Card><CardHeader><CardTitle className="text-lg">Payment</CardTitle></CardHeader>
                             <CardContent className="space-y-4">
                                 <div className="text-center p-4 bg-muted rounded-lg">
-                                    <p className="text-sm text-muted-foreground">Grand Total</p><p className="text-2xl font-bold">${saleSummary.grandTotal.toFixed(2)}</p>
+                                    <p className="text-sm text-muted-foreground">Grand Total</p><p className="text-2xl font-bold">${saleSummary.itemsTotal.toFixed(2)}</p>
                                 </div>
                                 <div className="space-y-2">
                                     <Label htmlFor="paymentGiven">Payment Received</Label>
