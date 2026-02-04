@@ -88,3 +88,12 @@ export interface CustomerBill {
   updatedAt?: Timestamp;
   closedAt?: Timestamp;
 }
+
+export interface Expense {
+  id: string;
+  title: string;
+  amount: number;
+  category: string;
+  date: Timestamp;
+  createdAt: Timestamp;
+}
