@@ -38,7 +38,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
@@ -54,10 +53,9 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { PlusCircle, Pencil, Trash2, Loader2, UserPlus, Users, Store, Languages } from 'lucide-react';
+import { PlusCircle, Pencil, Trash2, Loader2, UserPlus } from 'lucide-react';
 import type { Item, Customer, CustomerBill, CustomerBillItem, Payment } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Switch } from '@/components/ui/switch';
 import Image from 'next/image';
 
 const itemSchema = z.object({
@@ -85,24 +83,12 @@ type SaleBillItem = {
     stock: number;
 };
 
-// Represents an item aggregated for customer view
-interface CustomerViewItem {
-  name: string;
-  salePrice: number;
-  stockQty: number;
-  photoUrl?: string;
-  // Contains original item IDs and their current stock
-  sourceItems: { id: string; stock: number }[]; 
-}
-
-
 export default function ItemsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
 
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<'user' | 'customer'>('user');
 
   // Dialog states
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -150,40 +136,16 @@ export default function ItemsPage() {
     }
   }, [isSellDialogOpen, user]);
   
-  // Memoized and sorted item list for display
+  // Memoized and sorted item list for owner view
   const displayedItems = useMemo(() => {
-    if (view === 'user') {
-      return [...items].sort((a, b) => {
-          if (a.stockQty > 0 && b.stockQty === 0) return -1;
-          if (a.stockQty === 0 && b.stockQty > 0) return 1;
-          return b.createdAt.toMillis() - a.createdAt.toMillis();
-      });
-    } else { // Customer View
-      const grouped = new Map<string, CustomerViewItem>();
-      const sortedByDate = [...items].sort((a,b) => b.createdAt.toMillis() - a.createdAt.toMillis());
-
-      for (const item of sortedByDate) {
-        if (!grouped.has(item.name)) {
-          grouped.set(item.name, {
-            name: item.name,
-            salePrice: item.salePrice,
-            stockQty: 0,
-            photoUrl: item.photoUrl,
-            sourceItems: []
-          });
-        }
-        const group = grouped.get(item.name)!;
-        group.stockQty += item.stockQty;
-        group.sourceItems.push({ id: item.id, stock: item.stockQty });
-      }
-
-      return Array.from(grouped.values()).sort((a, b) => {
+    return [...items].sort((a, b) => {
         if (a.stockQty > 0 && b.stockQty === 0) return -1;
         if (a.stockQty === 0 && b.stockQty > 0) return 1;
-        return a.name.localeCompare(b.name);
-      });
-    }
-  }, [items, view]);
+        const timeA = a.createdAt?.toMillis() ?? 0;
+        const timeB = b.createdAt?.toMillis() ?? 0;
+        return timeB - timeA;
+    });
+  }, [items]);
 
   const handleEditItem = (item: Item) => {
     setEditingItem(item);
@@ -329,35 +291,31 @@ export default function ItemsPage() {
     }
   }
   
-  const ItemCard = ({ item }: { item: Item | CustomerViewItem }) => (
+  const ItemCard = ({ item }: { item: Item }) => (
     <Card className="flex flex-col">
         <CardContent className="p-4 flex-grow">
-            {'photoUrl' in item && item.photoUrl && (
+            {item.photoUrl && (
                 <div className="relative w-full h-32 mb-4 rounded-md overflow-hidden">
                     <Image src={item.photoUrl} alt={item.name} layout="fill" objectFit="cover" />
                 </div>
             )}
             <h3 className="font-semibold text-lg">{item.name}</h3>
             <div className="text-sm text-muted-foreground mt-1">
-                {'stockQty' in item && <p>Qty: <span className="font-medium text-foreground">{item.stockQty}</span></p>}
+                <p>Qty: <span className="font-medium text-foreground">{item.stockQty}</span></p>
             </div>
              <div className="mt-2">
                 <p className="text-xl font-bold text-primary">${item.salePrice.toFixed(2)}</p>
-                {view === 'user' && 'purchasePrice' in item && (
-                    <p className="text-xs text-muted-foreground">Cost: ${item.purchasePrice.toFixed(2)}</p>
-                )}
+                <p className="text-xs text-muted-foreground">Cost: ${item.purchasePrice.toFixed(2)}</p>
             </div>
-            {view === 'user' && 'supplier' in item && item.supplier && (
+            {item.supplier && (
                  <p className="text-xs text-muted-foreground mt-2">Supplier: {item.supplier}</p>
             )}
         </CardContent>
         <CardFooter className="p-2 border-t">
             <div className="w-full flex gap-2">
-                {view === 'user' && 'createdAt' in item && ( // check if it's a full Item object
-                    <Button variant="ghost" size="sm" className="flex-1" onClick={() => handleEditItem(item)}>
-                        <Pencil className="mr-2 h-4 w-4" /> Edit
-                    </Button>
-                )}
+                <Button variant="ghost" size="sm" className="flex-1" onClick={() => handleEditItem(item)}>
+                    <Pencil className="mr-2 h-4 w-4" /> Edit
+                </Button>
                 <Button variant="secondary" size="sm" className="flex-1" onClick={openSellDialog}>
                     <PlusCircle className="mr-2 h-4 w-4" /> Sell
                 </Button>
@@ -370,15 +328,6 @@ export default function ItemsPage() {
     <div className="container mx-auto p-4 sm:p-6 lg:p-8">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-3xl font-bold tracking-tight">Available Items</h1>
-        <div className="flex items-center gap-4">
-           <Button variant="outline" size="icon" disabled><Languages /></Button>
-            <div className="flex items-center space-x-2">
-                <Users className="h-5 w-5 text-muted-foreground" />
-                <Switch id="view-mode" checked={view === 'user'} onCheckedChange={(c) => setView(c ? 'user' : 'customer')} />
-                <Store className="h-5 w-5 text-muted-foreground" />
-                <Label htmlFor="view-mode" className="text-sm font-medium">{view === 'user' ? 'Owner View' : 'Customer View'}</Label>
-            </div>
-        </div>
       </div>
       
       {loading ? (
@@ -387,7 +336,7 @@ export default function ItemsPage() {
         </div>
       ) : displayedItems.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-          {displayedItems.map((item) => <ItemCard key={item.name} item={item as Item} />)}
+          {displayedItems.map((item) => <ItemCard key={item.id} item={item} />)}
         </div>
       ) : (
         <Card className="col-span-full flex items-center justify-center h-64 border-dashed">
@@ -405,14 +354,10 @@ export default function ItemsPage() {
                 <Form {...form}>
                     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                         <FormField control={form.control} name="name" render={({ field }) => ( <FormItem><FormLabel>Item Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />
-                        {view === 'user' && (
-                            <FormField control={form.control} name="purchasePrice" render={({ field }) => ( <FormItem><FormLabel>Purchase Price</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem> )} />
-                        )}
+                        <FormField control={form.control} name="purchasePrice" render={({ field }) => ( <FormItem><FormLabel>Purchase Price</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem> )} />
                         <FormField control={form.control} name="salePrice" render={({ field }) => ( <FormItem><FormLabel>Sale Price</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem> )} />
                         <FormField control={form.control} name="stockQty" render={({ field }) => ( <FormItem><FormLabel>Stock Quantity</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem> )} />
-                        {view === 'user' && (
-                           <FormField control={form.control} name="supplier" render={({ field }) => ( <FormItem><FormLabel>Supplier</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />
-                        )}
+                        <FormField control={form.control} name="supplier" render={({ field }) => ( <FormItem><FormLabel>Supplier</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />
                         <DialogFooter><DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose><Button type="submit">Save Changes</Button></DialogFooter>
                     </form>
                 </Form>
