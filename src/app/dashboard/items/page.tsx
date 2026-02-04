@@ -106,7 +106,15 @@ export default function ItemsPage() {
   const [paymentGiven, setPaymentGiven] = useState(0);
   const [isSavingSale, setIsSavingSale] = useState(false);
 
-  const form = useForm<ItemFormValues>({ resolver: zodResolver(itemSchema) });
+  const form = useForm<ItemFormValues>({ 
+    resolver: zodResolver(itemSchema),
+    defaultValues: {
+        name: '',
+        purchasePrice: 0,
+        salePrice: 0,
+        stockQty: 0
+    } 
+  });
   const addCustomerForm = useForm<CustomerFormValues>({ 
     resolver: zodResolver(customerSchema),
     defaultValues: {
@@ -455,7 +463,7 @@ export default function ItemsPage() {
 
       {/* Edit Item Dialog */}
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-            <DialogContent>
+            <DialogContent className="max-h-[90vh] overflow-y-auto">
                 <DialogHeader><DialogTitle>Edit Item</DialogTitle><DialogDescription>Update the details for this item.</DialogDescription></DialogHeader>
                 <Form {...form}>
                     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
