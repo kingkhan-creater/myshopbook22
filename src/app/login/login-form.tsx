@@ -53,11 +53,19 @@ export function LoginForm() {
       router.push('/dashboard');
     } catch (error: any) {
       console.error("Login Error:", error.code, error.message);
-      toast({
-        variant: 'destructive',
-        title: error.code || 'Authentication Failed',
-        description: error.message || 'The email or password you entered is incorrect.',
-      });
+      if (error.code === 'auth/invalid-credential') {
+        toast({
+          variant: 'destructive',
+          title: 'Invalid Credentials',
+          description: 'The email or password you entered is incorrect.',
+        });
+      } else {
+        toast({
+          variant: 'destructive',
+          title: error.code || 'Authentication Failed',
+          description: error.message || 'An unexpected error occurred.',
+        });
+      }
     } finally {
       setLoading(false);
     }
