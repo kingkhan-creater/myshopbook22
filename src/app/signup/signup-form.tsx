@@ -51,8 +51,8 @@ export function SignupForm() {
       const img = document.createElement("img");
       img.onload = () => {
         const canvas = document.createElement("canvas");
-        const MAX_WIDTH = 256;
-        const MAX_HEIGHT = 256;
+        const MAX_WIDTH = 300;
+        const MAX_HEIGHT = 300;
         let width = img.width;
         let height = img.height;
 
@@ -73,7 +73,7 @@ export function SignupForm() {
         if (!ctx) return;
         
         ctx.drawImage(img, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
         setPhotoDataUrl(dataUrl);
       };
       img.src = e.target.result as string;
@@ -89,19 +89,6 @@ export function SignupForm() {
 
       await updateProfile(user, { displayName: values.fullName });
       
-      if (photoDataUrl) {
-        try {
-          localStorage.setItem(`profilePhoto_${user.uid}`, photoDataUrl);
-        } catch (error) {
-          toast({
-            variant: "destructive",
-            title: "Could not save photo",
-            description: "The photo is too large to be saved. Please choose a smaller file and add it from your profile later.",
-          });
-          console.error("Failed to save photo to local storage during signup:", error);
-        }
-      }
-
       // Create the private user profile document
       const userProfile: { [key: string]: any } = {
         uid: user.uid,
@@ -111,6 +98,9 @@ export function SignupForm() {
       };
       if (values.shopName) userProfile.shopName = values.shopName;
       if (values.phoneNumber) userProfile.phoneNumber = values.phoneNumber;
+      if (photoDataUrl) {
+        userProfile.photoUrl = photoDataUrl;
+      }
       await setDoc(doc(db, 'users', user.uid), userProfile);
 
       // Create the public user profile document for discovery
@@ -119,6 +109,9 @@ export function SignupForm() {
         createdAt: serverTimestamp(),
       };
       if (values.shopName) publicUserProfile.shopName = values.shopName;
+      if (photoDataUrl) {
+        publicUserProfile.photoUrl = photoDataUrl;
+      }
       await setDoc(doc(db, 'publicUsers', user.uid), publicUserProfile);
 
 

@@ -29,7 +29,7 @@ interface PublicUserProfile {
   uid: string;
   fullName: string;
   shopName?: string;
-  photoURL?: string; // from local storage
+  photoUrl?: string; 
 }
 
 interface Message {
@@ -101,10 +101,6 @@ export default function ChatPage() {
 
         if (userDocSnap.exists()) {
           const profileData = { uid: peerId, ...userDocSnap.data() } as PublicUserProfile;
-          const storedPhoto = localStorage.getItem(`profilePhoto_${peerId}`);
-          if (storedPhoto) {
-            profileData.photoURL = storedPhoto;
-          }
           setPeerProfile(profileData);
         } else {
           throw new Error('Peer user profile not found.');
@@ -235,7 +231,7 @@ export default function ChatPage() {
         {peerProfile && (
            <div className="flex items-center gap-3">
              <Avatar>
-               <AvatarImage src={peerProfile.photoURL ?? undefined} />
+               <AvatarImage src={peerProfile.photoUrl ?? undefined} />
                <AvatarFallback>{getInitials(peerProfile.fullName)}</AvatarFallback>
              </Avatar>
              <div className="flex flex-col">

@@ -21,7 +21,8 @@ import {
 } from '@/components/ui/sheet';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useEffect, useState, useRef } from 'react';
-import { auth } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { DashboardNav } from '@/components/dashboard-nav';
 
@@ -37,10 +38,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       router.replace('/login');
     }
     if (user) {
-      const storedPhoto = localStorage.getItem(`profilePhoto_${user.uid}`);
-      if (storedPhoto) {
-        setPhotoURL(storedPhoto);
-      }
+      const fetchUserProfile = async () => {
+        const userDocRef = doc(db, 'users', user.uid);
+        const userDocSnap = await getDoc(userDocRef);
+        if (userDocSnap.exists() && userDocSnap.data().photoUrl) {
+          setPhotoURL(userDocSnap.data().photoUrl);
+        }
+      };
+      fetchUserProfile();
     }
   }, [user, loading, router]);
 
@@ -65,7 +70,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     fileInputRef.current?.click();
   };
 
-  const handlePhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file || !user) {
       return;
@@ -75,10 +80,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     reader.onload = (e) => {
       if (!e.target?.result) return;
       const img = document.createElement("img");
-      img.onload = () => {
+      img.onload = async () => {
         const canvas = document.createElement("canvas");
-        const MAX_WIDTH = 256;
-        const MAX_HEIGHT = 256;
+        const MAX_WIDTH = 300;
+        const MAX_HEIGHT = 300;
         let width = img.width;
         let height = img.height;
 
@@ -99,23 +104,36 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         if (!ctx) return;
 
         ctx.drawImage(img, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
+        
+        if (dataUrl.length > 300 * 1024) {
+            toast({
+                variant: "destructive",
+                title: "Image is too large",
+                description: "Please select an image smaller than 300KB.",
+            });
+            return;
+        }
 
         try {
-          localStorage.setItem(`profilePhoto_${user.uid}`, dataUrl);
+          const userDocRef = doc(db, 'users', user.uid);
+          const publicUserDocRef = doc(db, 'publicUsers', user.uid);
+          
+          await updateDoc(userDocRef, { photoUrl: dataUrl });
+          await updateDoc(publicUserDocRef, { photoUrl: dataUrl });
+
           setPhotoURL(dataUrl);
           toast({
             title: "Photo Updated",
-            description: "Your profile photo has been updated on this device.",
+            description: "Your profile photo has been updated.",
           });
         } catch (error) {
           toast({
             variant: "destructive",
             title: "Could not save photo",
-            description:
-              "The photo is too large to be saved. Please choose a smaller file.",
+            description: "There was an error saving your photo. Please try again.",
           });
-          console.error("Failed to save photo to local storage:", error);
+          console.error("Failed to save photo to Firestore:", error);
         }
       };
       img.src = e.target.result as string;

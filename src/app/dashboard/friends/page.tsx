@@ -26,7 +26,7 @@ interface PublicUserProfile {
   uid: string;
   fullName: string;
   shopName?: string;
-  photoURL?: string; // This comes from local storage, not firestore
+  photoUrl?: string;
 }
 
 interface Friendship {
@@ -60,18 +60,11 @@ export default function FriendsPage() {
       // Fetch all public user profiles for discovery
       const usersQuery = query(collection(db, 'publicUsers'));
       const usersSnapshot = await getDocs(usersQuery);
-      const usersData = usersSnapshot.docs
+      const allUsersData = usersSnapshot.docs
         .map(doc => ({ uid: doc.id, ...doc.data() } as PublicUserProfile))
         .filter(u => u.uid !== user.uid);
       
-      const enrichedUsersData = usersData.map(u => {
-        const storedPhoto = localStorage.getItem(`profilePhoto_${u.uid}`);
-        if (storedPhoto) {
-          u.photoURL = storedPhoto;
-        }
-        return u;
-      });
-      setAllUsers(enrichedUsersData);
+      setAllUsers(allUsersData);
 
       // Fetch friendships related to the current user
       const friendshipsQuery = query(collection(db, 'friendships'), where('users', 'array-contains', user.uid));
@@ -88,7 +81,7 @@ export default function FriendsPage() {
         const otherUserId = f.users.find(uid => uid !== user.uid);
         if (otherUserId) {
           relatedUserIds.add(otherUserId);
-          const otherUser = enrichedUsersData.find(u => u.uid === otherUserId);
+          const otherUser = allUsersData.find(u => u.uid === otherUserId);
           const friendshipWithUser = { ...f, otherUser };
 
           if (f.status === 'pending' && f.requestedBy !== user.uid) {
@@ -103,7 +96,7 @@ export default function FriendsPage() {
       setAcceptedFriends(accepted);
       setFriendships(friendshipsData);
 
-      const findList = enrichedUsersData.filter(u => !relatedUserIds.has(u.uid));
+      const findList = allUsersData.filter(u => !relatedUserIds.has(u.uid));
       setFindFriendsList(findList);
 
     } catch (error: any) {
@@ -183,7 +176,7 @@ export default function FriendsPage() {
             <li key={userProfile.uid} className="flex items-center justify-between rounded-lg border p-4">
               <div className="flex items-center gap-4">
                 <Avatar>
-                  <AvatarImage src={userProfile.photoURL} />
+                  <AvatarImage src={userProfile.photoUrl} />
                   <AvatarFallback>{getInitials(userProfile.fullName)}</AvatarFallback>
                 </Avatar>
                 <div>
