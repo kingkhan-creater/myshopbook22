@@ -539,7 +539,13 @@ export default function ItemsPage() {
                         </Card>
                     </div>
                 </div>
-                <DialogFooter><DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose><Button onClick={handleSaveSale} disabled={isSavingSale}>{isSavingSale && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Confirm Sale</Button></DialogFooter>
+                <DialogFooter>
+                    <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                    <Button onClick={handleSaveSale} disabled={isSavingSale}>
+                        {isSavingSale && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                        Confirm Sale
+                    </Button>
+                </DialogFooter>
             </DialogContent>
       </Dialog>
     </div>
