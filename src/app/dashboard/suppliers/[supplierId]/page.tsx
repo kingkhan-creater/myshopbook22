@@ -9,7 +9,6 @@ import {
   collection,
   query,
   where,
-  orderBy,
   onSnapshot,
 } from 'firebase/firestore';
 import type { Supplier, PurchaseBill } from '@/lib/types';
@@ -88,11 +87,12 @@ export default function SupplierLedgerPage() {
 
     const billsQuery = query(
       collection(db, 'users', user.uid, 'purchaseBills'),
-      where('supplierId', '==', supplierId),
-      orderBy('createdAt', 'desc')
+      where('supplierId', '==', supplierId)
     );
     const unsubBills = onSnapshot(billsQuery, (snapshot) => {
-      setBills(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PurchaseBill)));
+      const billsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PurchaseBill));
+      billsData.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
+      setBills(billsData);
       setLoading(false);
     }, (error) => {
       console.error("Error fetching bills:", error);

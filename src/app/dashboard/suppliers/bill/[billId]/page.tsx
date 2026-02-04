@@ -99,7 +99,7 @@ export default function PurchaseBillDetailPage() {
       const newPaymentForArray: SupplierPayment = {
           amount: amount,
           method: paymentMethod,
-          createdAt: new Timestamp(Date.now() / 1000, 0),
+          createdAt: serverTimestamp(),
       };
 
       const batch = writeBatch(db);
@@ -201,8 +201,8 @@ export default function PurchaseBillDetailPage() {
                  <Table>
                     <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Method</TableHead><TableHead className="text-right">Amount</TableHead></TableRow></TableHeader>
                     <TableBody>
-                        {bill.payments && bill.payments.length > 0 ? bill.payments.sort((a,b) => b.createdAt.toMillis() - a.createdAt.toMillis()).map((p, idx) => (
-                            <TableRow key={idx}><TableCell>{format(p.createdAt.toDate(), 'Pp')}</TableCell><TableCell>{p.method}</TableCell><TableCell className="text-right">${p.amount.toFixed(2)}</TableCell></TableRow>
+                        {bill.payments && bill.payments.length > 0 ? bill.payments.sort((a,b) => (b.createdAt as Timestamp).toMillis() - (a.createdAt as Timestamp).toMillis()).map((p, idx) => (
+                            <TableRow key={idx}><TableCell>{format((p.createdAt as Timestamp).toDate(), 'Pp')}</TableCell><TableCell>{p.method}</TableCell><TableCell className="text-right">${p.amount.toFixed(2)}</TableCell></TableRow>
                         )) : <TableRow><TableCell colSpan={3} className="text-center h-24">No payments recorded yet.</TableCell></TableRow>}
                     </TableBody>
                 </Table>

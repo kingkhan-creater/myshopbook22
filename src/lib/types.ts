@@ -1,4 +1,4 @@
-import type { Timestamp } from 'firebase/firestore';
+import type { Timestamp, FieldValue } from 'firebase/firestore';
 
 export interface Item {
   id: string;
@@ -24,7 +24,7 @@ export interface Supplier {
 export interface SupplierPayment {
   amount: number;
   method: string;
-  createdAt: Timestamp;
+  createdAt: Timestamp | FieldValue;
 }
 
 export interface PurchaseBillItem {
