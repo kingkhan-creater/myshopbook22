@@ -57,6 +57,7 @@ import { PlusCircle, Pencil, Trash2, Loader2, UserPlus } from 'lucide-react';
 import type { Item, Customer, CustomerBill } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
 import Image from 'next/image';
+import Link from 'next/link';
 
 const itemSchema = z.object({
   name: z.string().min(2, { message: 'Item name is required.' }),
@@ -382,6 +383,11 @@ export default function ItemsPage() {
     <div className="container mx-auto p-4 sm:p-6 lg:p-8">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-3xl font-bold tracking-tight">Available Items</h1>
+         <Button asChild>
+            <Link href="/dashboard/items/new">
+                <PlusCircle className="mr-2 h-4 w-4" /> Add/Purchase Items
+            </Link>
+          </Button>
       </div>
       
       {loading ? (
@@ -396,7 +402,7 @@ export default function ItemsPage() {
         <Card className="col-span-full flex items-center justify-center h-64 border-dashed">
           <CardContent className="text-center">
             <p className="text-lg font-semibold">No items in inventory.</p>
-            <p className="text-muted-foreground">Use the "Purchase Items" page to add stock.</p>
+            <p className="text-muted-foreground">Use the "Add/Purchase Items" page to add stock.</p>
           </CardContent>
         </Card>
       )}
