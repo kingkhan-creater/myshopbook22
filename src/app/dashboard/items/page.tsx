@@ -286,8 +286,8 @@ export default function ItemsPage() {
   }
 
   const handleSaveSale = async () => {
-    if (!user || !selectedCustomerId || saleItems.length === 0 || saleItems.some(i => !i.itemId || i.qty <= 0 || i.rate <=0)) {
-        toast({ variant: 'destructive', title: 'Validation Error', description: 'Please select a customer and add valid items with a quantity and rate greater than 0.'});
+    if (!user || !selectedCustomerId || saleItems.length === 0 || saleItems.some(i => !i.itemId || i.qty <= 0)) {
+        toast({ variant: 'destructive', title: 'Validation Error', description: 'Please select a customer and add valid items with a quantity greater than 0.'});
         return;
     }
     setIsSavingSale(true);
@@ -306,22 +306,26 @@ export default function ItemsPage() {
             // 2. Find the customer's open bill or prepare to create a new one
             const userBillsRef = collection(db, 'users', user.uid, 'bills');
             const openBillQuery = query(userBillsRef, where('customerId', '==', selectedCustomerId), where('status', '==', 'OPEN'), limit(1));
-            const openBillSnapshot = await getDocs(openBillQuery);
+            const openBillSnapshot = await transaction.get(openBillQuery);
 
             let billRef;
-            let currentBillData;
+            let currentBillData: CustomerBill;
+            let isNewBill = false;
 
             if (openBillSnapshot.docs.length > 0) {
                 const openBillDoc = openBillSnapshot.docs[0];
                 billRef = openBillDoc.ref;
                 currentBillData = openBillDoc.data() as CustomerBill;
             } else {
+                isNewBill = true;
                 const customerRef = doc(db, 'users', user.uid, 'customers', selectedCustomerId);
                 const customerSnap = await transaction.get(customerRef);
                 const customerData = customerSnap.data() as Customer;
                 const previousBalance = (customerData.totalCredit || 0) - (customerData.totalPaid || 0);
 
                 billRef = doc(userBillsRef);
+                // This is a template for the new bill.
+                // We'll merge the final calculated data into it before setting.
                 currentBillData = {
                     id: billRef.id,
                     customerId: selectedCustomerId,
@@ -332,15 +336,16 @@ export default function ItemsPage() {
                     totalPaid: 0,
                     grandTotal: previousBalance,
                     remaining: previousBalance,
-                    createdAt: serverTimestamp(),
-                };
+                } as Omit<CustomerBill, 'createdAt' | 'updatedAt'> as CustomerBill;
             }
 
             // 3. Add new items to the bill's subcollection
             const itemsSubcollectionRef = collection(billRef, 'items');
+            let newItemsTotalForThisSale = 0;
             for (const item of saleItems) {
                 const newItemRef = doc(itemsSubcollectionRef);
                 const total = (item.qty * item.rate) - (item.discount || 0);
+                newItemsTotalForThisSale += total;
                 transaction.set(newItemRef, {
                     itemId: item.itemId,
                     itemName: item.itemName,
@@ -363,26 +368,28 @@ export default function ItemsPage() {
                 });
             }
             
-            const newItemsTotalForThisSale = saleItems.reduce((sum, item) => sum + ((item.qty * item.rate) - (item.discount || 0)), 0);
-
-            const newItemsTotal = currentBillData.itemsTotal + newItemsTotalForThisSale;
-            const newTotalPaid = currentBillData.totalPaid + paymentAmount;
-            const newGrandTotal = currentBillData.previousBalance + newItemsTotal;
+            // 5. Calculate final bill values
+            const finalItemsTotal = currentBillData.itemsTotal + newItemsTotalForThisSale;
+            const finalTotalPaid = currentBillData.totalPaid + paymentAmount;
+            const finalGrandTotal = currentBillData.previousBalance + finalItemsTotal;
+            const finalRemaining = finalGrandTotal - finalTotalPaid;
 
             const billUpdateData = {
-                itemsTotal: newItemsTotal,
-                totalPaid: newTotalPaid,
-                grandTotal: newGrandTotal,
-                remaining: newGrandTotal - newTotalPaid,
+                itemsTotal: finalItemsTotal,
+                totalPaid: finalTotalPaid,
+                grandTotal: finalGrandTotal,
+                remaining: finalRemaining,
                 updatedAt: serverTimestamp(),
             };
-
-            if (openBillSnapshot.docs.length > 0) {
-                transaction.update(billRef, billUpdateData);
+            
+            // 6. Set or Update the bill document
+            if (isNewBill) {
+                transaction.set(billRef, { ...currentBillData, ...billUpdateData, createdAt: serverTimestamp(), id: billRef.id });
             } else {
-                transaction.set(billRef, { ...currentBillData, ...billUpdateData });
+                transaction.update(billRef, billUpdateData);
             }
 
+            // 7. Update customer's aggregate totals
             const customerRef = doc(db, 'users', user.uid, 'customers', selectedCustomerId);
             transaction.update(customerRef, {
                 totalCredit: increment(newItemsTotalForThisSale),
@@ -503,9 +510,9 @@ export default function ItemsPage() {
                                                 <DialogHeader><DialogTitle>Add New Customer</DialogTitle></DialogHeader>
                                                 <Form {...addCustomerForm}><form onSubmit={addCustomerForm.handleSubmit(handleSaveCustomer)} className="space-y-4">
                                                     <FormField control={addCustomerForm.control} name="name" render={({field}) => ( <FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )}/>
-                                                    <FormField control={addCustomerForm.control} name="phone" render={({field}) => ( <FormItem><FormLabel>Phone</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )}/>
-                                                    <FormField control={addCustomerForm.control} name="address" render={({field}) => ( <FormItem><FormLabel>Address</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )}/>
-                                                    <DialogFooter><DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose><Button type="submit" disabled={addCustomerForm.control.disabled}>Save</Button></DialogFooter>
+                                                    <FormField control={addCustomerForm.control} name="phone" render={({field}) => ( <FormItem><FormLabel>Phone</FormLabel><FormControl><Input {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem> )}/>
+                                                    <FormField control={addCustomerForm.control} name="address" render={({field}) => ( <FormItem><FormLabel>Address</FormLabel><FormControl><Input {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem> )}/>
+                                                    <DialogFooter><DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose><Button type="submit" disabled={addCustomerForm.formState.isSubmitting}>Save</Button></DialogFooter>
                                                 </form></Form>
                                             </DialogContent>
                                         </Dialog>
