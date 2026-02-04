@@ -22,6 +22,7 @@ import {
   runTransaction,
   setDoc,
   getDoc,
+  writeBatch,
 } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import {
@@ -302,53 +303,34 @@ export default function ItemsPage() {
     try {
         const openBillSnapshot = await getDocs(openBillQuery);
         let billRef:any;
-        const isNewBill = openBillSnapshot.empty;
 
-        if (isNewBill) {
-            const customerRef = doc(db, 'users', user.uid, 'customers', selectedCustomerId);
-            const customerSnap = await getDoc(customerRef);
-            if (!customerSnap.exists()) throw new Error("Customer not found.");
-            
-            const customerData = customerSnap.data() as Customer;
-            const previousBalance = (customerData.totalCredit || 0) - (customerData.totalPaid || 0);
-
-            billRef = doc(userBillsRef);
-            await setDoc(billRef, {
-                id: billRef.id,
-                customerId: selectedCustomerId,
-                billNumber: Date.now().toString().slice(-6),
-                status: 'OPEN',
-                previousBalance: previousBalance,
-                itemsTotal: 0,
-                totalPaid: 0,
-                grandTotal: previousBalance,
-                remaining: previousBalance,
-                createdAt: serverTimestamp(),
-            });
+        if (openBillSnapshot.empty) {
+            billRef = doc(userBillsRef); // Prepare a new bill reference
         } else {
             billRef = openBillSnapshot.docs[0].ref;
         }
 
         await runTransaction(db, async (transaction) => {
-            const currentBillSnap = await transaction.get(billRef);
-            if (!currentBillSnap.exists()) {
-                throw new Error("Bill could not be found or created. Please try again.");
-            }
-
+            // All reads must come first
             const customerRef = doc(db, 'users', user.uid, 'customers', selectedCustomerId);
             const itemRefs = saleItems.map(item => doc(db, 'users', user.uid, 'items', item.itemId));
-            const itemSnaps = await Promise.all(itemRefs.map(ref => transaction.get(ref)));
+            
+            const [billSnap, customerSnap, ...itemSnaps] = await Promise.all([
+                transaction.get(billRef),
+                transaction.get(customerRef),
+                ...itemRefs.map(ref => transaction.get(ref))
+            ]);
 
+            // Validation
+            if (!customerSnap.exists()) throw new Error("Customer not found.");
             for (let i = 0; i < saleItems.length; i++) {
-                const saleItem = saleItems[i];
                 const itemSnap = itemSnaps[i];
-                if (!itemSnap.exists() || itemSnap.data().stockQty < saleItem.qty) {
-                    throw new Error(`Not enough stock for ${saleItem.itemName}. Only ${itemSnap.data()?.stockQty || 0} available.`);
+                if (!itemSnap.exists() || itemSnap.data().stockQty < saleItems[i].qty) {
+                    throw new Error(`Not enough stock for ${saleItems[i].itemName}. Only ${itemSnap.data()?.stockQty || 0} available.`);
                 }
             }
-            
-            const currentBillData = currentBillSnap.data() as CustomerBill;
-            
+
+            // Calculations
             let newItemsTotalForThisSale = 0;
             const billItemsToAdd = saleItems.map(item => {
                 const total = (item.qty * item.rate) - (item.discount || 0);
@@ -362,16 +344,33 @@ export default function ItemsPage() {
                     total: total,
                 };
             });
-            
             const paymentAmount = paymentGiven || 0;
 
-            const billUpdateData = {
+            // All writes must come after all reads
+            if (!billSnap.exists()) {
+                const customerData = customerSnap.data() as Customer;
+                const previousBalance = (customerData.totalCredit || 0) - (customerData.totalPaid || 0);
+                transaction.set(billRef, {
+                    id: billRef.id,
+                    customerId: selectedCustomerId,
+                    billNumber: Date.now().toString().slice(-6),
+                    status: 'OPEN',
+                    previousBalance: previousBalance,
+                    itemsTotal: 0,
+                    totalPaid: 0,
+                    grandTotal: previousBalance,
+                    remaining: previousBalance,
+                    createdAt: serverTimestamp(),
+                });
+            }
+
+            transaction.update(billRef, {
                 itemsTotal: increment(newItemsTotalForThisSale),
                 totalPaid: increment(paymentAmount),
                 grandTotal: increment(newItemsTotalForThisSale),
                 remaining: increment(newItemsTotalForThisSale - paymentAmount),
                 updatedAt: serverTimestamp(),
-            };
+            });
 
             for (let i = 0; i < saleItems.length; i++) {
                 transaction.update(itemRefs[i], { stockQty: increment(-saleItems[i].qty) });
@@ -392,8 +391,6 @@ export default function ItemsPage() {
                     createdAt: serverTimestamp(),
                 });
             }
-
-            transaction.update(billRef, billUpdateData);
             
             transaction.update(customerRef, {
                 totalCredit: increment(newItemsTotalForThisSale),
@@ -546,7 +543,7 @@ export default function ItemsPage() {
                                         {saleItems.map(item => (
                                             <TableRow key={item.rowId}>
                                                 <TableCell>{item.itemName || (<Select value={item.itemId} onValueChange={(v) => handleSaleItemChange(item.rowId, 'itemId', v)}><SelectTrigger><SelectValue placeholder="Select Item"/></SelectTrigger><SelectContent>{items.filter(i=>i.stockQty > 0).map(i => <SelectItem key={i.id} value={i.id}>{i.name} (Qty: {i.stockQty})</SelectItem>)}</SelectContent></Select>)}</TableCell>
-                                                <TableCell><Input type="number" value={item.qty} onChange={e => handleSaleItemChange(item.rowId, 'qty', parseInt(e.target.value) || 1)} className="w-16"/></TableCell>
+                                                <TableCell><Input type="number" value={item.qty} onChange={e => handleSaleItemChange(item.rowId, 'qty', parseInt(e.target.value) || 0)} className="w-16"/></TableCell>
                                                 <TableCell><Input type="number" value={item.rate} onChange={e => handleSaleItemChange(item.rowId, 'rate', parseFloat(e.target.value) || 0)} className="w-20"/></TableCell>
                                                 <TableCell><Input type="number" value={item.discount} onChange={e => handleSaleItemChange(item.rowId, 'discount', parseFloat(e.target.value) || 0)} className="w-20"/></TableCell>
                                                 <TableCell>${((item.qty * item.rate) - (item.discount || 0)).toFixed(2)}</TableCell>
