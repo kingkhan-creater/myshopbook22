@@ -21,12 +21,22 @@ export interface Message {
   id: string;
   senderId: string;
   createdAt: Timestamp;
-  text?: string;
-  itemSnapshot?: ItemSnapshot;
-  photoUrl?: string; // base64 data URI
-  // Future fields
+  type: 'text' | 'image' | 'item';
+  
+  // Content fields
+  text?: string | null;
+  imageUrl?: string | null;
+  itemSnapshot?: ItemSnapshot | null;
+
+  // Deletion fields
   deletedFor?: string[];
-  isDeleted?: boolean;
+  deletedForEveryone?: boolean;
+  deletedAt?: Timestamp;
+
+  // Fields for auditing deleted messages
+  originalText?: string;
+  originalImageUrl?: string;
+  originalItemSnapshot?: ItemSnapshot;
 }
 
 
@@ -118,5 +128,33 @@ export interface Expense {
   amount: number;
   category: string;
   date: Timestamp;
+  createdAt: Timestamp;
+}
+
+// POSTS FEATURE TYPES
+
+export interface Post {
+  id: string;
+  userId: string;
+  userName: string;
+  userPhotoUrl?: string;
+  text: string;
+  imageUrl?: string;
+  createdAt: Timestamp;
+  isDeleted: boolean;
+  likeCount: number; // Denormalized for feed view
+  commentCount: number; // Denormalized for feed view
+}
+
+export interface Like {
+  userId: string;
+}
+
+export interface Comment {
+  id: string;
+  userId: string;
+  userName: string;
+  userPhotoUrl?: string;
+  text: string;
   createdAt: Timestamp;
 }

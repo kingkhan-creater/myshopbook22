@@ -21,6 +21,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { UserPlus, UserCheck, UserX, MessageSquare } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
+import { PostsFeed } from '@/components/dashboard/posts-feed';
+
 
 interface PublicUserProfile {
   uid: string;
@@ -47,7 +49,7 @@ export default function FriendsPage() {
   const [allUsers, setAllUsers] = useState<PublicUserProfile[]>([]);
   const [friendships, setFriendships] = useState<Friendship[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('find');
+  const [activeTab, setActiveTab] = useState('feed');
   
   const [findFriendsList, setFindFriendsList] = useState<PublicUserProfile[]>([]);
   const [pendingRequests, setPendingRequests] = useState<Friendship[]>([]);
@@ -217,16 +219,20 @@ export default function FriendsPage() {
     <div className="container mx-auto p-4 sm:p-6 lg:p-8">
       <Card>
         <CardHeader>
-          <CardTitle className="text-3xl font-bold tracking-tight">Friends</CardTitle>
-          <CardDescription>Manage your friends, requests, and discover new users.</CardDescription>
+          <CardTitle className="text-3xl font-bold tracking-tight">Community</CardTitle>
+          <CardDescription>Connect with friends and see what's new in the feed.</CardDescription>
         </CardHeader>
         <CardContent>
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
+              <TabsTrigger value="feed">Feed</TabsTrigger>
               <TabsTrigger value="find">Find Friends</TabsTrigger>
-              <TabsTrigger value="pending">Pending Requests</TabsTrigger>
+              <TabsTrigger value="pending">Pending</TabsTrigger>
               <TabsTrigger value="friends">My Friends</TabsTrigger>
             </TabsList>
+            <TabsContent value="feed" className="mt-4">
+                <PostsFeed />
+            </TabsContent>
             <TabsContent value="find" className="mt-4">
               {renderList(findFriendsList, 'find')}
             </TabsContent>

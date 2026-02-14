@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { db } from '@/lib/firebase';
 import {
@@ -10,23 +10,28 @@ import {
   getDoc,
   setDoc,
   addDoc,
+  updateDoc,
   orderBy,
   onSnapshot,
   serverTimestamp,
+  arrayUnion,
+  deleteField,
 } from 'firebase/firestore';
 import { useRouter, useParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, Send, Paperclip, Image as ImageIcon, Package, X } from 'lucide-react';
+import { ArrowLeft, Send, Paperclip, Image as ImageIcon, Package, X, MoreVertical, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import Image from 'next/image';
 import type { Message, Item, ItemSnapshot } from '@/lib/types';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Card, CardContent } from '@/components/ui/card';
+import { formatDistanceToNow } from 'date-fns';
 
 interface PublicUserProfile {
   uid: string;
@@ -40,7 +45,7 @@ const createChatId = (uid1: string, uid2: string) => {
 };
 
 const SharedItemCard = ({ item }: { item: ItemSnapshot }) => (
-  <div className="flex items-center gap-3 rounded-lg border p-3">
+  <div className="flex items-center gap-3 rounded-lg border p-3 bg-card">
      {item.photoBase64 ? (
       <div className="relative h-16 w-16 flex-shrink-0 rounded-md overflow-hidden">
         <Image src={item.photoBase64} alt={item.name} layout="fill" objectFit="cover" />
@@ -92,7 +97,7 @@ export default function ChatPage() {
   useEffect(() => {
     if (!user || !peerId || !chatId) return;
 
-    let unsubscribe = () => {};
+    let unsubscribeMessages: (() => void) | null = null;
 
     const setupChat = async () => {
       setLoading(true);
@@ -117,13 +122,13 @@ export default function ChatPage() {
         } else { throw new Error('Peer user profile not found.'); }
 
         const chatRef = doc(db, 'chats', chatId);
-        await setDoc(chatRef, { members: [user.uid, peerId] }, { merge: true });
+        await setDoc(chatRef, { members: [user.uid, peerId], createdAt: serverTimestamp() }, { merge: true });
 
         const messagesQuery = query(collection(db, 'chats', chatId, 'messages'), orderBy('createdAt', 'asc'));
 
-        unsubscribe = onSnapshot(messagesQuery, (snapshot) => {
+        unsubscribeMessages = onSnapshot(messagesQuery, (snapshot) => {
           const newMessages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
-          setMessages(newMessages);
+          setMessages(newMessages.filter(m => !m.deletedFor?.includes(user.uid)));
         }, (error) => {
           console.error("Error listening to messages:", error);
           toast({ variant: 'destructive', title: 'Connection Error', description: 'Could not listen for new messages.' });
@@ -137,7 +142,11 @@ export default function ChatPage() {
     };
 
     setupChat();
-    return () => unsubscribe();
+    return () => {
+      if (unsubscribeMessages) {
+        unsubscribeMessages();
+      }
+    };
   }, [user, peerId, chatId, router, toast]);
 
   // Fetch user's items for sharing dialog
@@ -153,13 +162,17 @@ export default function ChatPage() {
     }
   }, [isItemDialogOpen, user]);
 
-
-  const sendMessage = async (messageData: Omit<Message, 'id' | 'senderId' | 'createdAt'>, lastMessageText: string) => {
+  const sendMessage = useCallback(async (messageData: Omit<Message, 'id' | 'senderId' | 'createdAt'>, lastMessageText: string) => {
     if (!user || !chatId) return;
 
     try {
         const messagesRef = collection(db, 'chats', chatId, 'messages');
-        await addDoc(messagesRef, { ...messageData, senderId: user.uid, createdAt: serverTimestamp() });
+        await addDoc(messagesRef, { 
+          ...messageData, 
+          senderId: user.uid, 
+          createdAt: serverTimestamp(),
+          deletedForEveryone: false,
+        });
         
         const chatRef = doc(db, 'chats', chatId);
         await setDoc(chatRef, { lastMessage: lastMessageText, lastMessageAt: serverTimestamp(), members: [user.uid, peerId] }, { merge: true });
@@ -167,14 +180,14 @@ export default function ChatPage() {
         console.error("Error sending message:", error);
         toast({ variant: 'destructive', title: 'Error', description: 'Could not send message.' });
     }
-  };
+  }, [user, chatId, toast]);
 
   const handleSendTextMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newMessage.trim() === '') return;
     const messageText = newMessage.trim();
     setNewMessage('');
-    await sendMessage({ text: messageText }, messageText);
+    await sendMessage({ type: 'text', text: messageText }, messageText);
   };
   
   const handleSendItemMessage = async (item: Item) => {
@@ -183,7 +196,7 @@ export default function ChatPage() {
         salePrice: item.salePrice,
         ...(item.photoBase64 && { photoBase64: item.photoBase64 }),
     };
-    await sendMessage({ itemSnapshot }, `[Item] ${item.name}`);
+    await sendMessage({ type: 'item', itemSnapshot }, `[Item] ${item.name}`);
     setIsItemDialogOpen(false);
   };
   
@@ -211,12 +224,47 @@ export default function ChatPage() {
             if (!ctx) return;
             ctx.drawImage(img, 0, 0, width, height);
             const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-            await sendMessage({ photoUrl: dataUrl }, '[Photo]');
+            await sendMessage({ type: 'image', imageUrl: dataUrl }, '[Photo]');
         };
         img.src = event.target.result as string;
     };
     reader.readAsDataURL(file);
     if(photoInputRef.current) photoInputRef.current.value = ''; // Reset input
+  };
+
+  const handleDeleteForMe = async (messageId: string) => {
+    if (!user || !chatId) return;
+    const messageRef = doc(db, 'chats', chatId, 'messages', messageId);
+    try {
+        await updateDoc(messageRef, {
+            deletedFor: arrayUnion(user.uid)
+        });
+        toast({ title: 'Message deleted for you.' });
+    } catch (error) {
+        console.error("Error deleting for me:", error);
+        toast({ variant: 'destructive', title: 'Error', description: 'Could not delete message.' });
+    }
+  };
+
+  const handleDeleteForEveryone = async (message: Message) => {
+    if (!user || !chatId || message.senderId !== user.uid) return;
+    const messageRef = doc(db, 'chats', chatId, 'messages', message.id);
+    try {
+      await updateDoc(messageRef, {
+        deletedForEveryone: true,
+        deletedAt: serverTimestamp(),
+        text: null,
+        imageUrl: null,
+        itemSnapshot: null,
+        originalText: message.text || null,
+        originalImageUrl: message.imageUrl || null,
+        originalItemSnapshot: message.itemSnapshot || null,
+      });
+      toast({ title: 'Message deleted for everyone.' });
+    } catch (error: any) {
+      console.error("Error deleting for everyone:", error);
+      toast({ variant: 'destructive', title: 'Error', description: `Could not delete message. ${error.message}`});
+    }
   };
 
   const getInitials = (name: string) => (name || '').substring(0, 2).toUpperCase();
@@ -248,14 +296,46 @@ export default function ChatPage() {
         )}
       </header>
 
-      <main className="flex-1 overflow-y-auto p-4 space-y-4">
+      <main className="flex-1 overflow-y-auto p-4 space-y-2">
         {messages.map(msg => (
-          <div key={msg.id} className={`flex items-end gap-2 ${msg.senderId === user?.uid ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-xs md:max-w-md ${ msg.photoUrl ? 'p-0' : 'px-4 py-2' } rounded-lg ${ msg.senderId === user?.uid ? 'bg-primary text-primary-foreground' : 'bg-muted' }`}>
-              {msg.text && <p className="text-sm whitespace-pre-wrap">{msg.text}</p>}
-              {msg.photoUrl && <Image src={msg.photoUrl} alt="Shared photo" width={300} height={300} className="rounded-lg object-cover" />}
-              {msg.itemSnapshot && <SharedItemCard item={msg.itemSnapshot} />}
+          <div key={msg.id} className={`group flex items-end gap-2 ${msg.senderId === user?.uid ? 'justify-end' : 'justify-start'}`}>
+            {msg.senderId === user?.uid && (
+              <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <MoreVertical className="h-4 w-4" />
+                      </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                      <DropdownMenuItem onClick={() => handleDeleteForMe(msg.id)}><Trash2 className="mr-2 h-4 w-4"/>Delete for me</DropdownMenuItem>
+                      {msg.senderId === user.uid && <DropdownMenuItem onClick={() => handleDeleteForEveryone(msg)} className="text-destructive focus:text-destructive"><Trash2 className="mr-2 h-4 w-4"/>Delete for everyone</DropdownMenuItem>}
+                  </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+            <div className={`max-w-xs md:max-w-md ${ msg.imageUrl ? 'p-0' : 'px-4 py-2' } rounded-lg ${ msg.senderId === user?.uid ? 'bg-primary text-primary-foreground' : 'bg-muted' }`}>
+              {msg.deletedForEveryone ? (
+                <p className="text-sm italic text-muted-foreground">This message was deleted</p>
+              ) : (
+                <>
+                  {msg.text && <p className="text-sm whitespace-pre-wrap">{msg.text}</p>}
+                  {msg.imageUrl && <Image src={msg.imageUrl} alt="Shared photo" width={300} height={300} className="rounded-lg object-cover" />}
+                  {msg.itemSnapshot && <SharedItemCard item={msg.itemSnapshot} />}
+                </>
+              )}
+               <p className="text-xs opacity-70 mt-1 px-1">{msg.createdAt ? formatDistanceToNow(msg.createdAt.toDate(), { addSuffix: true }) : ''}</p>
             </div>
+            {msg.senderId !== user?.uid && (
+              <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <MoreVertical className="h-4 w-4" />
+                      </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                      <DropdownMenuItem onClick={() => handleDeleteForMe(msg.id)}><Trash2 className="mr-2 h-4 w-4"/>Delete for me</DropdownMenuItem>
+                  </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
         ))}
          <div ref={messagesEndRef} />
