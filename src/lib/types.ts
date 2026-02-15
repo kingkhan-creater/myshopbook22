@@ -170,9 +170,10 @@ export interface Comment {
   id: string;
   userId: string;
   userName: string;
-  userPhotoUrl?: string;
   text: string;
   createdAt: Timestamp;
+  updatedAt?: Timestamp;
+  isEdited?: boolean;
 }
 
 export interface PublicUserProfile {
