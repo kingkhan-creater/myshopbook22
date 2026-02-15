@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { db } from '@/lib/firebase';
 import { collection, query, where, orderBy, onSnapshot, doc, getDoc, updateDoc } from 'firebase/firestore';
@@ -42,9 +42,10 @@ const SellerItemCard = ({ item, isOwner, onMarkAsSold }: { item: MarketplaceItem
   </Card>
 );
 
-export default function SellerMarketplacePage({ params }: { params: { userId: string } }) {
+export default function SellerMarketplacePage() {
   const { user, profile } = useAuth();
   const router = useRouter();
+  const params = useParams<{ userId: string }>();
   const { toast } = useToast();
   
   const sellerId = params.userId;

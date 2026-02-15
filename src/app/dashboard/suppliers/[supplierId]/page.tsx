@@ -13,6 +13,7 @@ import {
 import type { Supplier, PurchaseBill } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
+import { useParams } from 'next/navigation';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
@@ -61,8 +62,9 @@ const BillCard = ({ bill }: { bill: PurchaseBill }) => {
   )
 }
 
-export default function SupplierLedgerPage({ params }: { params: { supplierId: string } }) {
+export default function SupplierLedgerPage() {
   const { user } = useAuth();
+  const params = useParams<{ supplierId: string }>();
   const supplierId = params.supplierId;
   const { toast } = useToast();
 

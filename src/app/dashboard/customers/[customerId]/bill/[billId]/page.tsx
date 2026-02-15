@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { db } from '@/lib/firebase';
 import {
@@ -38,9 +38,10 @@ import { ArrowLeft, Loader2, IndianRupee, Landmark, PlusCircle, FileSignature, A
 import Link from 'next/link';
 
 
-export default function BillDetailPage({ params }: { params: { customerId: string, billId: string } }) {
+export default function BillDetailPage() {
   const { user } = useAuth();
   const router = useRouter();
+  const params = useParams<{ customerId: string, billId: string }>();
   const { toast } = useToast();
 
   const customerId = params.customerId;

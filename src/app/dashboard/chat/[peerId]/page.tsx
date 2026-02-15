@@ -17,7 +17,7 @@ import {
   arrayUnion,
   deleteField,
 } from 'firebase/firestore';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -62,9 +62,10 @@ const SharedItemCard = ({ item }: { item: ItemSnapshot }) => (
   </div>
 );
 
-export default function ChatPage({ params }: { params: { peerId: string } }) {
+export default function ChatPage() {
   const { user } = useAuth();
   const router = useRouter();
+  const params = useParams<{ peerId: string }>();
   const { toast } = useToast();
 
   const peerId = params.peerId;

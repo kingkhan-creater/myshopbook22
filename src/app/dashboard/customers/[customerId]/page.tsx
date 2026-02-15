@@ -14,6 +14,7 @@ import {
 import type { Customer, CustomerBill } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
+import { useParams } from 'next/navigation';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
@@ -74,8 +75,9 @@ const BillCard = ({ bill, customerId }: { bill: CustomerBill, customerId: string
   )
 }
 
-export default function CustomerLedgerPage({ params }: { params: { customerId: string } }) {
+export default function CustomerLedgerPage() {
   const { user } = useAuth();
+  const params = useParams<{ customerId: string }>();
   const customerId = params.customerId;
   const { toast } = useToast();
 
