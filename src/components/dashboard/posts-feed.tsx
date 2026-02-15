@@ -16,7 +16,7 @@ import { Skeleton } from '../ui/skeleton';
 
 
 function CreatePostForm() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { toast } = useToast();
   const [text, setText] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -63,7 +63,7 @@ function CreatePostForm() {
         await addDoc(collection(db, 'posts'), {
             userId: user.uid,
             userName: user.displayName || 'Anonymous',
-            userPhotoUrl: user.photoURL || null,
+            userPhotoUrl: profile?.photoUrl || null,
             text: text.trim(),
             imageUrl: photoBase64,
             createdAt: serverTimestamp(),

@@ -167,7 +167,7 @@ export function PostCard({ post }: { post: Post }) {
         await addDoc(commentsRef, {
             userId: user.uid,
             userName: user.displayName,
-            userPhotoUrl: user.photoURL || null,
+            userPhotoUrl: profile?.photoUrl || null,
             text: newComment,
             createdAt: serverTimestamp()
         });
@@ -279,7 +279,7 @@ export function PostCard({ post }: { post: Post }) {
         </div>
         <form onSubmit={handleAddComment} className="w-full flex items-center gap-2">
             <Avatar className="h-8 w-8">
-                <AvatarImage src={user?.photoURL ?? undefined}/>
+                <AvatarImage src={profile?.photoUrl ?? undefined}/>
                 <AvatarFallback>{getInitials(user?.displayName || '')}</AvatarFallback>
             </Avatar>
             <Input 
