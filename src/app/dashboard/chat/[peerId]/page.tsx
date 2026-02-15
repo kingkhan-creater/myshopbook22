@@ -17,7 +17,7 @@ import {
   arrayUnion,
   deleteField,
 } from 'firebase/firestore';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -62,17 +62,17 @@ const SharedItemCard = ({ item }: { item: ItemSnapshot }) => (
   </div>
 );
 
-export default function ChatPage() {
+export default function ChatPage({ params }: { params: { peerId: string } }) {
   const { user } = useAuth();
   const router = useRouter();
-  const params = useParams();
   const { toast } = useToast();
 
-  const peerId = params.peerId as string;
+  const peerId = params.peerId;
   const chatId = useMemo(() => (user ? createChatId(user.uid, peerId) : null), [user, peerId]);
 
   const [peerProfile, setPeerProfile] = useState<PublicUserProfile | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [isFriend, setIsFriend] = useState(false);
 
@@ -127,7 +127,7 @@ export default function ChatPage() {
 
         unsubscribeMessages = onSnapshot(messagesQuery, (snapshot) => {
           const newMessages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
-          setMessages(newMessages.filter(m => !m.deletedFor?.includes(user.uid)));
+          setMessages(newMessages.filter(m => !(m.deletedFor?.includes(user.uid))));
         }, (error) => {
           console.error("Error listening to messages:", error);
           toast({ variant: 'destructive', title: 'Connection Error', description: 'Could not listen for new messages.' });
@@ -179,7 +179,7 @@ export default function ChatPage() {
         console.error("Error sending message:", error);
         toast({ variant: 'destructive', title: 'Error', description: 'Could not send message.' });
     }
-  }, [user, chatId, toast]);
+  }, [user, chatId, peerId, toast]);
 
   const handleSendTextMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -252,9 +252,9 @@ export default function ChatPage() {
       await updateDoc(messageRef, {
         deletedForEveryone: true,
         deletedAt: serverTimestamp(),
-        text: null,
-        imageUrl: null,
-        itemSnapshot: null,
+        text: deleteField(),
+        imageUrl: deleteField(),
+        itemSnapshot: deleteField(),
         originalText: message.text || null,
         originalImageUrl: message.imageUrl || null,
         originalItemSnapshot: message.itemSnapshot || null,

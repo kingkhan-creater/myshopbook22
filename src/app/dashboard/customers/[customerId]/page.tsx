@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { useParams } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { db } from '@/lib/firebase';
 import {
@@ -75,10 +74,9 @@ const BillCard = ({ bill, customerId }: { bill: CustomerBill, customerId: string
   )
 }
 
-export default function CustomerLedgerPage() {
+export default function CustomerLedgerPage({ params }: { params: { customerId: string } }) {
   const { user } = useAuth();
-  const params = useParams();
-  const customerId = params.customerId as string;
+  const customerId = params.customerId;
   const { toast } = useToast();
 
   const [customer, setCustomer] = useState<Customer | null>(null);

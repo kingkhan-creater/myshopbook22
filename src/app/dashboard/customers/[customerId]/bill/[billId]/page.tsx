@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { db } from '@/lib/firebase';
 import {
@@ -38,14 +38,13 @@ import { ArrowLeft, Loader2, IndianRupee, Landmark, PlusCircle, FileSignature, A
 import Link from 'next/link';
 
 
-export default function BillDetailPage() {
+export default function BillDetailPage({ params }: { params: { customerId: string, billId: string } }) {
   const { user } = useAuth();
-  const params = useParams();
   const router = useRouter();
   const { toast } = useToast();
 
-  const customerId = params.customerId as string;
-  const billId = params.billId as string;
+  const customerId = params.customerId;
+  const billId = params.billId;
 
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [bill, setBill] = useState<CustomerBill | null>(null);
@@ -334,7 +333,7 @@ export default function BillDetailPage() {
                             </div>
                             <DialogFooter>
                                 <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                                <Button onClick={handleAddItem} disabled={isSaving || !saleItem || saleItem.qty > saleItem.stock}>
+                                <Button onClick={handleAddItem} disabled={isSaving || !saleItem || (saleItem && saleItem.qty > saleItem.stock)}>
                                     {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
                                     {saleItem && saleItem.qty > saleItem.stock ? 'Not Enough Stock' : 'Add to Bill'}
                                 </Button>
