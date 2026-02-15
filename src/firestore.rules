@@ -18,6 +18,11 @@ service cloud.firestore {
     match /users/{userId} {
       allow read, write: if isOwner(userId);
     }
+    
+    match /publicUsers/{userId} {
+      allow read: if isAuth();
+      allow write: if isOwner(userId);
+    }
 
     match /users/{userId}/{collection}/{docId} {
       allow read, write: if isOwner(userId);
@@ -46,7 +51,7 @@ service cloud.firestore {
         && request.resource.data.userId == request.auth.uid;
 
       allow update: if isAuth()
-        && resource.data.userId == request.auth.uid;
+        && resource.data.userId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isDeleted']);
 
       allow delete: if false; // soft delete only
     }
@@ -81,10 +86,13 @@ service cloud.firestore {
 
     match /chats/{chatId}/messages/{messageId} {
       function isMemberOfParentChat() {
-        return request.auth != null && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId), {data: {members: []}}).data.members;
+        // Use get() to read the parent chat document
+        let chatDoc = get(/databases/$(database)/documents/chats/$(chatId));
+        // Check if the user's UID is in the members list
+        return request.auth != null && request.auth.uid in chatDoc.data.members;
       }
 
-      allow read: if isMemberOfParentChat() && (resource.data.get('deletedFor', [])).hasAny([request.auth.uid]) == false;
+      allow read: if isMemberOfParentChat() && !(request.auth.uid in resource.data.get('deletedFor', []));
       
       allow create: if isMemberOfParentChat() && request.resource.data.senderId == request.auth.uid;
 
