@@ -175,6 +175,9 @@ const StoryViewer = ({ open, onOpenChange, userStories }: { open: boolean, onOpe
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="p-0 border-0 bg-black/90 max-w-md h-full md:h-[90vh] md:max-h-[800px] flex flex-col focus:outline-none">
+                 <DialogHeader className="sr-only">
+                    <DialogTitle>Story from {author.name}</DialogTitle>
+                 </DialogHeader>
                  <div className="absolute top-0 left-0 right-0 p-4 z-10 bg-gradient-to-b from-black/50 to-transparent">
                     <div className="flex items-center gap-2 mb-2">
                         {userStories.map((_, index) => (
