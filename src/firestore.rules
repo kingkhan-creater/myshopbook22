@@ -119,5 +119,15 @@ service cloud.firestore {
       allow create: if isAuth() && request.resource.data.userId == request.auth.uid;
       allow update, delete: if false; // Stories are immutable
     }
+
+    /* ================= MARKETPLACE ================= */
+    match /marketplace/{itemId} {
+      allow read: if isAuth();
+      allow create: if isAuth() && request.resource.data.sellerId == request.auth.uid;
+      allow update: if isAuth()
+        && resource.data.sellerId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+      allow delete: if false; // Use status 'SOLD' instead of deleting
+    }
   }
 }

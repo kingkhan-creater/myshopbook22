@@ -183,3 +183,16 @@ export interface Story {
   createdAt: Timestamp;
   expiresAt: Timestamp;
 }
+
+export interface MarketplaceItem {
+  id: string;
+  sellerId: string;
+  sellerName: string;
+  sellerPhotoUrl?: string;
+  title: string;
+  description: string;
+  price: number;
+  imageUrl: string;
+  status: 'ACTIVE' | 'SOLD';
+  createdAt: Timestamp;
+}
