@@ -18,6 +18,7 @@ import { Package, Users, Truck, Bell, Wallet, Receipt } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatDistanceToNow } from 'date-fns';
 import Link from 'next/link';
+import { StoriesSection } from '@/components/dashboard/stories-section';
 
 const overviewCards = [
   { title: 'Items', description: 'Manage inventory', icon: Package, href: '/dashboard/items' },
@@ -125,6 +126,8 @@ export default function DashboardPage() {
         <p className="text-muted-foreground">
           Here's a quick overview of your shop.
         </p>
+
+        <StoriesSection />
 
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {overviewCards.map((card) => (

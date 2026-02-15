@@ -165,3 +165,21 @@ export interface Comment {
   text: string;
   createdAt: Timestamp;
 }
+
+export interface PublicUserProfile {
+  uid: string;
+  fullName: string;
+  photoUrl?: string;
+  shopName?: string;
+}
+
+export interface Story {
+  id: string;
+  userId: string;
+  userName: string;
+  userPhotoUrl?: string;
+  imageUrl: string;
+  text?: string;
+  createdAt: Timestamp;
+  expiresAt: Timestamp;
+}
