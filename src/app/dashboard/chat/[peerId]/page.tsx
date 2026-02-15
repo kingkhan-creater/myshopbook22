@@ -32,6 +32,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Card, CardContent } from '@/components/ui/card';
 import { formatDistanceToNow } from 'date-fns';
+import { cn } from '@/lib/utils';
 
 interface PublicUserProfile {
   uid: string;
@@ -298,7 +299,7 @@ export default function ChatPage() {
 
       <main className="flex-1 overflow-y-auto p-4 space-y-2">
         {messages.map(msg => (
-          <div key={msg.id} className={\`group flex items-end gap-2 \${msg.senderId === user?.uid ? 'justify-end' : 'justify-start'}\`}>
+          <div key={msg.id} className={cn("group flex items-end gap-2", msg.senderId === user?.uid ? 'justify-end' : 'justify-start')}>
             {msg.senderId === user?.uid && (
               <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -312,7 +313,7 @@ export default function ChatPage() {
                   </DropdownMenuContent>
               </DropdownMenu>
             )}
-            <div className={\`max-w-xs md:max-w-md \${ msg.imageUrl ? 'p-0' : 'px-4 py-2' } rounded-lg \${ msg.senderId === user?.uid ? 'bg-primary text-primary-foreground' : 'bg-muted' }\`}>
+            <div className={cn("max-w-xs md:max-w-md rounded-lg", msg.imageUrl ? 'p-0' : 'px-4 py-2', msg.senderId === user?.uid ? 'bg-primary text-primary-foreground' : 'bg-muted' )}>
               {msg.deletedForEveryone ? (
                 <p className="text-sm italic text-muted-foreground">This message was deleted</p>
               ) : (
