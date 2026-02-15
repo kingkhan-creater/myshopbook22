@@ -53,29 +53,38 @@ service cloud.firestore {
     /* ================= POSTS ================= */
     match /posts/{postId} {
       allow read: if isAuth();
+      
       allow create: if isAuth()
         && request.resource.data.userId == request.auth.uid;
 
-      allow update: if isAuth()
-        && resource.data.userId == request.auth.uid 
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isDeleted'])
-        && isUserOwner(request.auth.uid);
+      allow update: if isAuth() && (
+        ( // Owner can soft-delete their own post
+          resource.data.userId == request.auth.uid &&
+          request.resource.data.isDeleted == true &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isDeleted'])
+        ) ||
+        ( // Allow for reaction and comment counts to be updated
+          request.resource.data.diff(resource.data).affectedKeys().hasAny(['commentCount', 'reactionCounts'])
+        )
+      );
 
       allow delete: if false; // soft delete only
     }
 
     match /posts/{postId}/reactions/{userId} {
       allow read: if isAuth();
-      allow create, update, delete: if isAuth() && request.auth.uid == userId;
+      // Users can create, update, or delete their own reaction document.
+      allow write: if isAuth() && request.auth.uid == userId;
     }
 
     match /posts/{postId}/comments/{commentId} {
       allow read: if isAuth();
+      
       allow create: if isAuth()
         && request.resource.data.userId == request.auth.uid;
-      allow update: if isAuth()
-        && resource.data.userId == request.auth.uid;
-      allow delete: if false;
+        
+      // Comments are immutable
+      allow update, delete: if false;
     }
 
     /* ================= FRIENDS ================= */

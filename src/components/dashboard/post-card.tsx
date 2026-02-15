@@ -167,7 +167,7 @@ export function PostCard({ post }: { post: Post }) {
         await addDoc(commentsRef, {
             userId: user.uid,
             userName: user.displayName,
-            userPhotoUrl: author?.photoUrl || null,
+            userPhotoUrl: user.photoURL || null,
             text: newComment,
             createdAt: serverTimestamp()
         });
