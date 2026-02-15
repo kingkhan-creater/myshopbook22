@@ -95,6 +95,7 @@ export function SignupForm() {
         email: values.email,
         fullName: values.fullName,
         createdAt: serverTimestamp(),
+        role: 'OWNER', // Default role for new sign-ups
       };
       if (values.shopName) userProfile.shopName = values.shopName;
       if (values.phoneNumber) userProfile.phoneNumber = values.phoneNumber;

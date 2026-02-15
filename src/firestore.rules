@@ -9,6 +9,12 @@ service cloud.firestore {
     function isOwner(userId) {
       return isAuth() && request.auth.uid == userId;
     }
+    
+    function isUserOwner(userId) {
+      let userData = get(/databases/$(database)/documents/users/$(userId)).data;
+      // Default to 'STAFF' if role doesn't exist to be safe. Only explicit 'OWNER' is owner.
+      return userData != null && userData.get('role', 'STAFF') == 'OWNER';
+    }
 
     function billDoc(userId, billId) {
       return get(/databases/$(database)/documents/users/$(userId)/bills/$(billId));
@@ -51,7 +57,9 @@ service cloud.firestore {
         && request.resource.data.userId == request.auth.uid;
 
       allow update: if isAuth()
-        && resource.data.userId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isDeleted']);
+        && resource.data.userId == request.auth.uid 
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isDeleted'])
+        && isUserOwner(request.auth.uid);
 
       allow delete: if false; // soft delete only
     }
@@ -126,7 +134,8 @@ service cloud.firestore {
       allow create: if isAuth() && request.resource.data.sellerId == request.auth.uid;
       allow update: if isAuth()
         && resource.data.sellerId == request.auth.uid
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+        && isUserOwner(request.auth.uid);
       allow delete: if false; // Use status 'SOLD' instead of deleting
     }
   }

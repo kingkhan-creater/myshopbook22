@@ -1,5 +1,14 @@
 import type { Timestamp, FieldValue } from 'firebase/firestore';
 
+export interface UserProfile {
+  uid: string;
+  role: 'OWNER' | 'STAFF';
+  fullName: string;
+  email: string;
+  photoUrl?: string;
+  shopName?: string;
+}
+
 export interface Item {
   id: string;
   name: string;

@@ -43,7 +43,7 @@ const SellerItemCard = ({ item, isOwner, onMarkAsSold }: { item: MarketplaceItem
 );
 
 export default function SellerMarketplacePage() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const params = useParams();
   const router = useRouter();
   const { toast } = useToast();
@@ -92,7 +92,7 @@ export default function SellerMarketplacePage() {
   }, [sellerId, router, toast]);
 
   const handleMarkAsSold = async (itemId: string) => {
-    if (!user || user.uid !== sellerId) return;
+    if (!user || user.uid !== sellerId || profile?.role !== 'OWNER') return;
     const itemRef = doc(db, 'marketplace', itemId);
     try {
       await updateDoc(itemRef, { status: 'SOLD' });
@@ -147,7 +147,7 @@ export default function SellerMarketplacePage() {
             <SellerItemCard
               key={item.id}
               item={item}
-              isOwner={user?.uid === item.sellerId}
+              isOwner={user?.uid === item.sellerId && profile?.role === 'OWNER'}
               onMarkAsSold={handleMarkAsSold}
             />
           ))}

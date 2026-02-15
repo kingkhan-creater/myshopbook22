@@ -71,7 +71,7 @@ const CommentItem = ({ comment }: { comment: Comment }) => (
 )
 
 export function PostCard({ post }: { post: Post }) {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { toast } = useToast();
   const [author, setAuthor] = useState<PublicUserProfile | null>(null);
   const [reactions, setReactions] = useState<Reaction[]>([]);
@@ -180,7 +180,7 @@ export function PostCard({ post }: { post: Post }) {
   };
 
   const handleDeletePost = async () => {
-    if (user?.uid !== post.userId) return;
+    if (user?.uid !== post.userId || profile?.role !== 'OWNER') return;
     if (!window.confirm("Are you sure you want to delete this post?")) return;
     
     try {
@@ -219,7 +219,7 @@ export function PostCard({ post }: { post: Post }) {
                 {post.createdAt ? formatDistanceToNow(post.createdAt.toDate(), { addSuffix: true }) : '...'}
             </p>
         </div>
-        {user?.uid === post.userId && (
+        {user?.uid === post.userId && profile?.role === 'OWNER' && (
             <DropdownMenu>
                 <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal /></Button></DropdownMenuTrigger>
                 <DropdownMenuContent>
