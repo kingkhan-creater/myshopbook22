@@ -68,7 +68,7 @@ function CreatePostForm() {
             imageUrl: photoBase64,
             createdAt: serverTimestamp(),
             isDeleted: false,
-            likeCount: 0,
+            reactionCounts: {},
             commentCount: 0
         });
         setText('');

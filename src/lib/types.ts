@@ -133,6 +133,17 @@ export interface Expense {
 
 // POSTS FEATURE TYPES
 
+export type ReactionType = 'LIKE' | 'LOVE' | 'HAHA' | 'WOW' | 'SAD' | 'ANGRY';
+
+export const ReactionTypes: ReactionType[] = ['LIKE', 'LOVE', 'HAHA', 'WOW', 'SAD', 'ANGRY'];
+
+export interface Reaction {
+  userId: string;
+  type: ReactionType;
+  createdAt: Timestamp;
+}
+
+
 export interface Post {
   id: string;
   userId: string;
@@ -142,12 +153,8 @@ export interface Post {
   imageUrl?: string;
   createdAt: Timestamp;
   isDeleted: boolean;
-  likeCount: number; // Denormalized for feed view
+  reactionCounts?: { [key in ReactionType]?: number };
   commentCount: number; // Denormalized for feed view
-}
-
-export interface Like {
-  userId: string;
 }
 
 export interface Comment {
