@@ -1,112 +1,115 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // User profile (FINAL)
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuth() && request.auth.uid == userId;
+    }
+
+    function billDoc(userId, billId) {
+      return get(/databases/$(database)/documents/users/$(userId)/bills/$(billId));
+    }
+
+    /* ================= USERS ================= */
     match /users/{userId} {
-      allow read, write: if request.auth != null
-        && request.auth.uid == userId;
+      allow read, write: if isOwner(userId);
     }
 
-    // Generic rule for all user-owned collections (items, customers, bills, etc.)
     match /users/{userId}/{collection}/{docId} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if isOwner(userId);
     }
 
-    // Rule for bill subcollections (items, payments)
-    match /users/{userId}/bills/{billId}/{subcollection}/{subDocId} {
-      allow read: if request.auth != null && request.auth.uid == userId;
-      // Allow creating documents only if the parent bill is OPEN
-      allow create: if request.auth != null && request.auth.uid == userId
-                    && get(/databases/$(database)/documents/users/$(userId)/bills/$(billId)).data.status == 'OPEN';
-      // Disallow updates and deletes to preserve history
-      allow update, delete: if false;
+    /* ================= BILLS ================= */
+    match /users/{userId}/bills/{billId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId)
+        && resource.data.status == 'OPEN';
+      allow delete: if false;
     }
 
-
-    // Public user profiles for discovery
-    match /publicUsers/{userId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == userId;
+    match /users/{userId}/bills/{billId}/{sub}/{docId} {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId)
+        && billDoc(userId, billId).data.status == 'OPEN';
+      allow delete: if false;
     }
 
-    // --- Friendships & Chat System Rules ---
-
-    // Friendships: Users in the `users` array can read/update.
-    // Creation is also restricted to participants.
-    match /friendships/{friendshipId} {
-      allow read, update: if request.auth != null && request.auth.uid in resource.data.users;
-      allow create: if request.auth != null && request.auth.uid in request.resource.data.users;
-      allow delete: if false; // Deleting friendships is handled via update (status change).
-    }
-
-    // Chat Metadata: Only chat participants can access the chat document.
-    // Separate create from read/update to use request.resource on create.
-    match /chats/{chatId} {
-      allow read, update: if request.auth != null && request.auth.uid in resource.data.members;
-      allow create: if request.auth != null && request.auth.uid in request.resource.data.members;
-    }
-
-    // Messages: Only chat members can read/create. Messages are mostly immutable.
-    match /chats/{chatId}/messages/{messageId} {
-      function isChatMember() {
-        return request.auth != null && get(/databases/$(database)/documents/chats/$(chatId)).data.members.hasAny([request.auth.uid]);
-      }
-
-      // Allow read only if a member and message not deleted for the user
-      allow read: if isChatMember() && (resource.data.get('deletedFor', [])).hasAny([request.auth.uid]) == false;
-      
-      // Allow create if a member and the sender is the current user
-      allow create: if isChatMember() && request.resource.data.senderId == request.auth.uid;
-      
-      // Allow update only for deletion logic
-      allow update: if isChatMember() &&
-        // Case 1: "Delete for me" - adding self to deletedFor array
-        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deletedFor']) &&
-         request.resource.data.deletedFor == resource.data.deletedFor.concat([request.auth.uid])) ||
-        // Case 2: "Delete for everyone" - sender can mark as deleted
-        (resource.data.senderId == request.auth.uid &&
-         request.resource.data.deletedForEveryone == true &&
-         resource.data.deletedForEveryone == false);
-
-      allow delete: if false; // Never allow hard deletes
-    }
-
-    // --- Posts Feed System Rules ---
+    /* ================= POSTS ================= */
     match /posts/{postId} {
-      // Any authenticated user can read posts that are not soft-deleted.
-      allow read: if request.auth != null && resource.data.isDeleted == false;
+      allow read: if isAuth();
+      allow create: if isAuth()
+        && request.resource.data.userId == request.auth.uid;
 
-      // The author can create a post.
-      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+      allow update: if isAuth()
+        && resource.data.userId == request.auth.uid;
 
-      // The author can "soft delete" their own post (isDeleted: false -> true).
-      // Disallow all other updates to maintain integrity.
-      allow update: if request.auth != null
-                    && resource.data.userId == request.auth.uid
-                    && resource.data.isDeleted == false
-                    && request.resource.data.isDeleted == true
-                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isDeleted']);
-      
-      allow delete: if false; // No hard deletes
+      allow delete: if false; // soft delete only
     }
 
     match /posts/{postId}/likes/{userId} {
-       // A user can only like/unlike for themselves.
-       allow read: if request.auth != null;
-       allow write: if request.auth != null && request.auth.uid == userId;
+      allow read: if isAuth();
+      allow create, delete: if isAuth()
+        && request.auth.uid == userId;
     }
 
     match /posts/{postId}/comments/{commentId} {
-        // Any authenticated user can read comments.
-        allow read: if request.auth != null;
+      allow read: if isAuth();
+      allow create: if isAuth()
+        && request.resource.data.userId == request.auth.uid;
+      allow update: if isAuth()
+        && resource.data.userId == request.auth.uid;
+      allow delete: if false;
+    }
 
-        // Any authenticated user can create a comment, if they are the sender.
-        allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
-        
-        // Comments are immutable.
-        allow update, delete: if false;
+    /* ================= FRIENDS ================= */
+    match /friendships/{id} {
+      allow read, update: if request.auth.uid in resource.data.users;
+      allow create: if request.auth.uid in request.resource.data.users;
+      allow delete: if false;
+    }
+
+    /* ================= CHATS ================= */
+    match /chats/{chatId} {
+      function isMember() {
+        return request.auth != null && request.auth.uid in resource.data.members;
+      }
+      allow read, update: if isMember();
+      allow create: if request.auth != null && request.auth.uid in request.resource.data.members;
+      allow delete: if false;
+    }
+
+    match /chats/{chatId}/messages/{messageId} {
+      function isMemberOfParentChat() {
+        return request.auth != null && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId), {data: {members: []}}).data.members;
+      }
+
+      allow read: if isMemberOfParentChat() && (resource.data.get('deletedFor', [])).hasAny([request.auth.uid]) == false;
+      
+      allow create: if isMemberOfParentChat() && request.resource.data.senderId == request.auth.uid;
+
+      allow update: if isMemberOfParentChat() && (
+        // "Delete for me"
+        (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deletedFor']) &&
+          request.resource.data.deletedFor == resource.data.get('deletedFor', []).concat([request.auth.uid])
+        )
+        ||
+        // "Delete for everyone"
+        (
+          resource.data.senderId == request.auth.uid &&
+          request.resource.data.deletedForEveryone == true &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'deletedForEveryone', 'deletedAt', 'text', 'imageUrl', 'itemSnapshot', 'originalText', 'originalImageUrl', 'originalItemSnapshot'
+          ])
+        )
+      );
+
+      allow delete: if false;
     }
   }
 }

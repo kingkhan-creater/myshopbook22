@@ -73,7 +73,6 @@ export default function ChatPage() {
 
   const [peerProfile, setPeerProfile] = useState<PublicUserProfile | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [isFriend, setIsFriend] = useState(false);
 

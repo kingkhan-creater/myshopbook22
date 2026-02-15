@@ -34,9 +34,9 @@ export interface Message {
   deletedAt?: Timestamp;
 
   // Fields for auditing deleted messages
-  originalText?: string;
-  originalImageUrl?: string;
-  originalItemSnapshot?: ItemSnapshot;
+  originalText?: string | null;
+  originalImageUrl?: string | null;
+  originalItemSnapshot?: ItemSnapshot | null;
 }
 
 
