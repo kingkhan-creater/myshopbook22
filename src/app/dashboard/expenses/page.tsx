@@ -184,7 +184,7 @@ export default function ExpensesPage() {
                  <Form {...form}>
                     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
                         <FormField control={form.control} name="title" render={({ field }) => ( <FormItem><FormLabel>Title</FormLabel><FormControl><Input placeholder="e.g., Office Supplies" {...field} /></FormControl><FormMessage /></FormItem> )} />
-                        <FormField control={form.control} name="amount" render={({ field }) => ( <FormItem><FormLabel>Amount</FormLabel><FormControl><Input type="number" placeholder="e.g., 150.00" {...field} /></FormControl><FormMessage /></FormItem> )} />
+                        <FormField control={form.control} name="amount" render={({ field }) => ( <FormItem><FormLabel>Amount</FormLabel><FormControl><Input type="number" placeholder="e.g., 150.00" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem> )} />
                         <FormField control={form.control} name="category" render={({ field }) => ( <FormItem><FormLabel>Category</FormLabel><FormControl><Input placeholder="e.g., Overhead" {...field} /></FormControl><FormMessage /></FormItem> )} />
                         <FormField control={form.control} name="date" render={({ field }) => (
                             <FormItem className="flex flex-col">

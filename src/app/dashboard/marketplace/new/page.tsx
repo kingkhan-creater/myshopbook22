@@ -125,7 +125,7 @@ export default function NewMarketplaceListingPage() {
                   <FormItem><FormLabel>Description</FormLabel><FormControl><Textarea placeholder="Describe your item in detail..." {...field} /></FormControl><FormMessage /></FormItem>
                 )} />
                 <FormField control={form.control} name="price" render={({ field }) => (
-                  <FormItem><FormLabel>Price</FormLabel><FormControl><Input type="number" step="0.01" placeholder="e.g., 99.99" {...field} /></FormControl><FormMessage /></FormItem>
+                  <FormItem><FormLabel>Price</FormLabel><FormControl><Input type="number" step="0.01" placeholder="e.g., 99.99" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
                 )} />
                 <FormItem>
                   <FormLabel>Photo</FormLabel>
