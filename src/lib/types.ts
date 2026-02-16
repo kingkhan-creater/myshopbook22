@@ -176,6 +176,14 @@ export interface Comment {
   createdAt: Timestamp;
   updatedAt?: Timestamp;
   isEdited?: boolean;
+  likeCount?: number;
+}
+
+export interface CommentLike {
+  userId: string;
+  userName: string;
+  userPhotoUrl?: string;
+  createdAt: Timestamp;
 }
 
 export interface PublicUserProfile {

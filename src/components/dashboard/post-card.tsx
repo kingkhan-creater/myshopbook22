@@ -18,7 +18,7 @@ import {
   where,
   setDoc,
 } from 'firebase/firestore';
-import type { Post, Comment, Reaction, ReactionType, PublicUserProfile } from '@/lib/types';
+import type { Post, Comment, Reaction, ReactionType, PublicUserProfile, CommentLike } from '@/lib/types';
 import { ReactionTypes } from '@/lib/types';
 import { formatDistanceToNow } from 'date-fns';
 import Image from 'next/image';
@@ -59,19 +59,41 @@ const getInitials = (name: string) => (name || '').substring(0, 2).toUpperCase()
 
 function CommentItem({
   comment,
+  postId,
+  postOwnerId,
   profile,
-  isOwner,
   onDelete,
   onUpdate,
 }: {
   comment: Comment;
+  postId: string;
+  postOwnerId: string;
   profile: PublicUserProfile | undefined;
-  isOwner: boolean;
   onDelete: (commentId: string) => void;
   onUpdate: (commentId: string, newText: string) => void;
 }) {
+  const { user, profile: myProfile } = useAuth();
+  const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(comment.text);
+  const [likes, setLikes] = useState<CommentLike[]>([]);
+  const [myCommentLike, setMyCommentLike] = useState<CommentLike | null>(null);
+  const [isLikersOpen, setIsLikersOpen] = useState(false);
+  
+  // Optimistic state
+  const [optimisticLike, setOptimisticLike] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const likesRef = collection(db, 'posts', postId, 'comments', comment.id, 'likes');
+    const unsub = onSnapshot(likesRef, (snap) => {
+        const data = snap.docs.map(doc => ({ userId: doc.id, ...doc.data() } as CommentLike));
+        setLikes(data);
+        const mine = data.find(l => l.userId === user?.uid) || null;
+        setMyCommentLike(mine);
+        setOptimisticLike(!!mine);
+    });
+    return unsub;
+  }, [postId, comment.id, user?.uid]);
 
   const handleUpdate = () => {
     if (editText.trim() && editText.trim() !== comment.text) {
@@ -79,6 +101,40 @@ function CommentItem({
     }
     setIsEditing(false);
   };
+
+  const handleLikeComment = useCallback(() => {
+    if (!user) return;
+    const isLiking = !optimisticLike;
+    setOptimisticLike(isLiking);
+
+    const commentRef = doc(db, 'posts', postId, 'comments', comment.id);
+    const likeRef = doc(db, 'posts', postId, 'comments', comment.id, 'likes', user.uid);
+
+    if (isLiking) {
+        setDoc(likeRef, {
+            userId: user.uid,
+            userName: user.displayName,
+            userPhotoUrl: myProfile?.photoUrl || null,
+            createdAt: serverTimestamp()
+        });
+        updateDoc(commentRef, { likeCount: increment(1) });
+    } else {
+        deleteDoc(likeRef);
+        updateDoc(commentRef, { likeCount: increment(-1) });
+    }
+  }, [user, optimisticLike, postId, comment.id, myProfile, toast]);
+
+  const canDelete = user?.uid === comment.userId || user?.uid === postOwnerId;
+  const canEdit = user?.uid === comment.userId;
+
+  const currentLikeCount = useMemo(() => {
+    const serverCount = comment.likeCount || 0;
+    const serverHasLiked = !!myCommentLike;
+    const clientHasLiked = optimisticLike;
+    
+    if (serverHasLiked === clientHasLiked) return serverCount;
+    return clientHasLiked ? serverCount + 1 : serverCount - 1;
+  }, [comment.likeCount, myCommentLike, optimisticLike]);
 
   return (
     <div className="flex items-start gap-2 group">
@@ -96,15 +152,33 @@ function CommentItem({
             </div>
           </div>
         ) : (
-          <div className="inline-block bg-muted rounded-2xl px-3 py-2 relative max-w-full overflow-hidden">
+          <div className="inline-block bg-muted rounded-2xl px-3 py-2 relative max-w-full overflow-hidden shadow-sm">
             <p className="font-bold text-xs">{comment.userName}</p>
             <p className="text-sm break-words">{comment.text}</p>
             {comment.isEdited && <span className="text-[10px] text-muted-foreground block mt-0.5">Edited</span>}
+            
+            {currentLikeCount > 0 && (
+                <div 
+                    onClick={() => setIsLikersOpen(true)}
+                    className="absolute bottom-1 -right-2 bg-background rounded-full px-1.5 py-0.5 flex items-center gap-1 shadow-md border cursor-pointer hover:bg-accent"
+                >
+                    <Heart className="h-3 w-3 text-red-500 fill-red-500" />
+                    <span className="text-[10px] font-bold">{currentLikeCount}</span>
+                </div>
+            )}
           </div>
         )}
         {!isEditing && (
             <div className="flex gap-3 px-2 mt-1">
-                <button className="text-[10px] font-bold text-muted-foreground hover:underline">Like</button>
+                <button 
+                    onClick={handleLikeComment}
+                    className={cn(
+                        "text-[10px] font-bold hover:underline transition-colors",
+                        optimisticLike ? "text-red-500" : "text-muted-foreground"
+                    )}
+                >
+                    Like
+                </button>
                 <button className="text-[10px] font-bold text-muted-foreground hover:underline">Reply</button>
                 <span className="text-[10px] text-muted-foreground">
                     {comment.createdAt ? formatDistanceToNow(comment.createdAt.toDate(), { addSuffix: false }) : '...'}
@@ -112,7 +186,7 @@ function CommentItem({
             </div>
         )}
       </div>
-      {isOwner && !isEditing && (
+      {(canEdit || canDelete) && !isEditing && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button className="h-6 w-6 rounded-full flex items-center justify-center hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity">
@@ -120,15 +194,42 @@ function CommentItem({
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setIsEditing(true)}>
-              <Pencil className="mr-2 h-4 w-4" /> Edit
-            </DropdownMenuItem>
+            {canEdit && (
+                <DropdownMenuItem onClick={() => setIsEditing(true)}>
+                    <Pencil className="mr-2 h-4 w-4" /> Edit
+                </DropdownMenuItem>
+            )}
             <DropdownMenuItem onClick={() => onDelete(comment.id)} className="text-destructive">
               <Trash2 className="mr-2 h-4 w-4" /> Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       )}
+
+      {/* Comment Likers Modal */}
+      <Dialog open={isLikersOpen} onOpenChange={setIsLikersOpen}>
+        <DialogContent className="max-w-md p-0 h-[50vh] flex flex-col">
+            <DialogHeader className="p-4 border-b">
+                <DialogTitle className="text-center text-sm font-bold">People who liked this comment</DialogTitle>
+                <div className="absolute right-4 top-4">
+                    <DialogClose asChild><button className="rounded-full h-8 w-8 flex items-center justify-center bg-muted hover:bg-muted/80"><X className="h-4 w-4"/></button></DialogClose>
+                </div>
+            </DialogHeader>
+            <ScrollArea className="flex-1">
+                <div className="p-2">
+                    {likes.map(like => (
+                        <div key={like.userId} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted transition-colors">
+                            <Avatar className="h-10 w-10">
+                                <AvatarImage src={like.userPhotoUrl ?? undefined} />
+                                <AvatarFallback>{getInitials(like.userName || '')}</AvatarFallback>
+                            </Avatar>
+                            <span className="font-bold text-sm">{like.userName || 'Anonymous'}</span>
+                        </div>
+                    ))}
+                </div>
+            </ScrollArea>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -267,10 +368,8 @@ export function PostCard({ post }: { post: Post }) {
 
   const handleLikeTap = () => {
     if (optimisticReactionType) {
-        // If already reacted, toggle off the current one
         handleReaction(optimisticReactionType);
     } else {
-        // If no reaction, default to LIKE
         handleReaction('LIKE');
     }
   };
@@ -288,7 +387,8 @@ export function PostCard({ post }: { post: Post }) {
         userId: user.uid,
         userName: user.displayName || 'Anonymous',
         text: commentText,
-        createdAt: serverTimestamp()
+        createdAt: serverTimestamp(),
+        likeCount: 0
       });
       const postRef = doc(db, 'posts', post.id);
       await updateDoc(postRef, { commentCount: increment(1) });
@@ -501,8 +601,9 @@ export function PostCard({ post }: { post: Post }) {
                             <CommentItem 
                                 key={comment.id}
                                 comment={comment}
+                                postId={post.id}
+                                postOwnerId={post.userId}
                                 profile={commenterProfiles.get(comment.userId)}
-                                isOwner={user?.uid === comment.userId}
                                 onDelete={handleDeleteComment}
                                 onUpdate={handleUpdateComment}
                             />
