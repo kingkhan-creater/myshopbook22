@@ -6,6 +6,8 @@ export interface UserProfile {
   fullName: string;
   email: string;
   photoUrl?: string;
+  coverPhotoUrl?: string;
+  bio?: string;
   shopName?: string;
 }
 
@@ -190,6 +192,8 @@ export interface PublicUserProfile {
   uid: string;
   fullName: string;
   photoUrl?: string;
+  coverPhotoUrl?: string;
+  bio?: string;
   shopName?: string;
 }
 

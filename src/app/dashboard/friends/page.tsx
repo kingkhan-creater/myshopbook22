@@ -175,7 +175,7 @@ export default function FriendsPage() {
 
           return (
             <li key={userProfile.uid} className="flex items-center justify-between gap-3 rounded-lg border p-3 sm:p-4">
-              <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
+              <Link href={`/dashboard/profile/${userProfile.uid}`} className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1 hover:bg-muted/50 rounded-md transition-colors">
                 <Avatar className="h-10 w-10 sm:h-12 sm:w-12 flex-shrink-0">
                   <AvatarImage src={userProfile.photoUrl ?? undefined} />
                   <AvatarFallback>{getInitials(userProfile.fullName)}</AvatarFallback>
@@ -184,7 +184,7 @@ export default function FriendsPage() {
                   <p className="font-semibold text-sm sm:text-base truncate">{userProfile.fullName}</p>
                   {userProfile.shopName && <p className="text-xs sm:text-sm text-muted-foreground truncate">{userProfile.shopName}</p>}
                 </div>
-              </div>
+              </Link>
               <div className="flex-shrink-0">
                 {type === 'find' && (
                   <Button size="sm" onClick={() => handleSendRequest(userProfile)} className="h-8 text-xs sm:h-9 sm:text-sm">

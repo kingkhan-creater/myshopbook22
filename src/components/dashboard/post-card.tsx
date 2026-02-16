@@ -22,6 +22,7 @@ import type { Post, Comment, Reaction, ReactionType, PublicUserProfile, CommentL
 import { ReactionTypes } from '@/lib/types';
 import { formatDistanceToNow } from 'date-fns';
 import Image from 'next/image';
+import Link from 'next/link';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -132,10 +133,12 @@ function CommentItem({
 
   return (
     <div className="flex items-start gap-2 group">
-      <Avatar className="h-8 w-8 flex-shrink-0">
-        <AvatarImage src={profile?.photoUrl ?? undefined} />
-        <AvatarFallback>{getInitials(comment.userName)}</AvatarFallback>
-      </Avatar>
+      <Link href={`/dashboard/profile/${comment.userId}`} className="flex-shrink-0">
+        <Avatar className="h-8 w-8">
+          <AvatarImage src={profile?.photoUrl ?? undefined} />
+          <AvatarFallback>{getInitials(comment.userName)}</AvatarFallback>
+        </Avatar>
+      </Link>
       <div className="flex-1 min-w-0">
         {isEditing ? (
           <div className="space-y-2">
@@ -147,7 +150,9 @@ function CommentItem({
           </div>
         ) : (
           <div className="inline-block bg-muted rounded-2xl px-3 py-2 relative max-w-full overflow-hidden shadow-sm">
-            <p className="font-bold text-xs truncate">{comment.userName}</p>
+            <Link href={`/dashboard/profile/${comment.userId}`} className="hover:underline">
+              <p className="font-bold text-xs truncate">{comment.userName}</p>
+            </Link>
             <p className="text-sm break-words">{comment.text}</p>
             {comment.isEdited && <span className="text-[10px] text-muted-foreground block mt-0.5">Edited</span>}
             
@@ -212,13 +217,13 @@ function CommentItem({
             <ScrollArea className="flex-1">
                 <div className="p-2">
                     {likes.map(like => (
-                        <div key={like.userId} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted transition-colors">
+                        <Link key={like.userId} href={`/dashboard/profile/${like.userId}`} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted transition-colors">
                             <Avatar className="h-10 w-10">
                                 <AvatarImage src={like.userPhotoUrl ?? undefined} />
                                 <AvatarFallback>{getInitials(like.userName || '')}</AvatarFallback>
                             </Avatar>
                             <span className="font-bold text-sm truncate">{like.userName || 'Anonymous'}</span>
-                        </div>
+                        </Link>
                     ))}
                 </div>
             </ScrollArea>
@@ -491,12 +496,16 @@ export function PostCard({ post }: { post: Post }) {
   return (
     <Card className="shadow-sm border-none sm:border sm:shadow-none overflow-hidden">
       <CardHeader className="flex flex-row items-center gap-3 p-3 sm:p-4">
-        <Avatar className="h-10 w-10 flex-shrink-0">
-          <AvatarImage src={author?.photoUrl ?? undefined} />
-          <AvatarFallback>{getInitials(author?.fullName || post.userName)}</AvatarFallback>
-        </Avatar>
+        <Link href={`/dashboard/profile/${post.userId}`} className="flex-shrink-0">
+          <Avatar className="h-10 w-10">
+            <AvatarImage src={author?.photoUrl ?? undefined} />
+            <AvatarFallback>{getInitials(author?.fullName || post.userName)}</AvatarFallback>
+          </Avatar>
+        </Link>
         <div className="flex-1 min-w-0">
-          <p className="font-bold text-sm hover:underline cursor-pointer truncate">{author?.fullName || post.userName}</p>
+          <Link href={`/dashboard/profile/${post.userId}`} className="font-bold text-sm hover:underline truncate block">
+            {author?.fullName || post.userName}
+          </Link>
           <p className="text-[10px] text-muted-foreground truncate">
             {post.createdAt ? formatDistanceToNow(post.createdAt.toDate(), { addSuffix: true }) : '...'}
           </p>
@@ -672,7 +681,7 @@ export function PostCard({ post }: { post: Post }) {
             <ScrollArea className="flex-1">
                 <div className="p-2">
                     {reactions.map(react => (
-                        <div key={react.userId} className="flex items-center justify-between p-2 rounded-lg hover:bg-muted transition-colors cursor-pointer">
+                        <Link key={react.userId} href={`/dashboard/profile/${react.userId}`} className="flex items-center justify-between p-2 rounded-lg hover:bg-muted transition-colors cursor-pointer">
                             <div className="flex items-center gap-3 min-w-0 flex-1">
                                 <div className="relative flex-shrink-0">
                                     <Avatar className="h-10 w-10">
@@ -686,7 +695,7 @@ export function PostCard({ post }: { post: Post }) {
                                 <span className="font-bold text-sm truncate">{react.userName || 'Anonymous'}</span>
                             </div>
                             <Button variant="ghost" size="sm" className="bg-muted hover:bg-muted/80 h-8 px-3 text-xs font-bold flex-shrink-0 ml-2">View Profile</Button>
-                        </div>
+                        </Link>
                     ))}
                 </div>
             </ScrollArea>
