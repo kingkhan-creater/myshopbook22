@@ -80,8 +80,8 @@ function CommentItem({
   const [myCommentLike, setMyCommentLike] = useState<CommentLike | null>(null);
   const [isLikersOpen, setIsLikersOpen] = useState(false);
   
-  // Optimistic state
-  const [optimisticLike, setOptimisticLike] = useState<boolean | null>(null);
+  // Optimistic state for the icon color
+  const [optimisticLike, setOptimisticLike] = useState<boolean>(false);
 
   useEffect(() => {
     const likesRef = collection(db, 'posts', postId, 'comments', comment.id, 'likes');
@@ -127,14 +127,8 @@ function CommentItem({
   const canDelete = user?.uid === comment.userId || user?.uid === postOwnerId;
   const canEdit = user?.uid === comment.userId;
 
-  const currentLikeCount = useMemo(() => {
-    const serverCount = comment.likeCount || 0;
-    const serverHasLiked = !!myCommentLike;
-    const clientHasLiked = optimisticLike;
-    
-    if (serverHasLiked === clientHasLiked) return serverCount;
-    return clientHasLiked ? serverCount + 1 : serverCount - 1;
-  }, [comment.likeCount, myCommentLike, optimisticLike]);
+  // comment.likeCount is already optimistically updated by Firestore SDK because we are listening to it
+  const currentLikeCount = comment.likeCount || 0;
 
   return (
     <div className="flex items-start gap-2 group">
@@ -208,7 +202,7 @@ function CommentItem({
 
       {/* Comment Likers Modal */}
       <Dialog open={isLikersOpen} onOpenChange={setIsLikersOpen}>
-        <DialogContent className="max-w-md p-0 h-[50vh] flex flex-col">
+        <DialogContent className="max-w-md p-0 h-[50vh] flex flex-col focus:outline-none">
             <DialogHeader className="p-4 border-b">
                 <DialogTitle className="text-center text-sm font-bold">People who liked this comment</DialogTitle>
                 <div className="absolute right-4 top-4">
@@ -245,7 +239,7 @@ export function PostCard({ post }: { post: Post }) {
   const [commenterProfiles, setCommenterProfiles] = useState<Map<string, PublicUserProfile>>(new Map());
   const [newComment, setNewComment] = useState('');
   
-  // Optimistic UI states
+  // Optimistic UI states for the button feel
   const [optimisticReactionType, setOptimisticReactionType] = useState<ReactionType | null>(null);
   const [isAnimating, setIsAnimating] = useState(false);
 
@@ -333,10 +327,10 @@ export function PostCard({ post }: { post: Post }) {
     const oldType = myReaction?.type;
     const isUnReacting = oldType === newType;
 
-    // --- Optimistic UI Update ---
+    // --- Visual Optimistic UI Update ---
     setIsAnimating(true);
     setOptimisticReactionType(isUnReacting ? null : newType);
-    setTimeout(() => setIsAnimating(false), 400); // Clear animation after bounce
+    setTimeout(() => setIsAnimating(false), 400);
 
     const postRef = doc(db, 'posts', post.id);
     const reactionRef = doc(db, 'posts', post.id, 'reactions', user.uid);
@@ -361,9 +355,10 @@ export function PostCard({ post }: { post: Post }) {
     }
 
     if (Object.keys(updates).length > 0) {
+        // No await here to keep it non-blocking
         updateDoc(postRef, updates).catch(err => {
             console.error("Failed to update reaction counts", err);
-            // Revert optimistic change on error
+            // Firestore SDK usually handles reverts automatically for documented-based listeners
             setOptimisticReactionType(oldType || null);
             toast({ variant: 'destructive', title: 'Error', description: 'Failed to update reaction.' });
         });
@@ -403,7 +398,6 @@ export function PostCard({ post }: { post: Post }) {
   const handleButtonClick = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    // Only toggle the default like if it's NOT a long press
     if (!isLongPressRef.current) {
       handleLikeTap();
     }
@@ -471,17 +465,10 @@ export function PostCard({ post }: { post: Post }) {
   }, [post.id, toast]);
 
   const { totalReactions, topReactions, reactionsText } = useMemo(() => {
+    // Note: post.reactionCounts is already optimistically updated by Firestore SDK 
+    // because we are listening to the post document via onSnapshot in the parent feed.
     const counts = { ...(post.reactionCounts || {}) };
     
-    // Adjust counts based on optimistic local state
-    const serverType = myReaction?.type;
-    const clientType = optimisticReactionType;
-    
-    if (serverType !== clientType) {
-        if (serverType) counts[serverType] = (counts[serverType] || 0) - 1;
-        if (clientType) counts[clientType] = (counts[clientType] || 0) + 1;
-    }
-
     const total = Object.values(counts).reduce((sum, count) => sum + (count || 0), 0);
     const top = Object.entries(counts)
       .filter(([, count]) => (count || 0) > 0)
@@ -491,7 +478,7 @@ export function PostCard({ post }: { post: Post }) {
     
     let text = "";
     if (total > 0) {
-        if (clientType) {
+        if (optimisticReactionType) {
             text = total === 1 ? "You" : (total === 2 ? "You and 1 other" : `You and ${total - 1} others`);
         } else {
             text = `${total}`;
@@ -499,7 +486,7 @@ export function PostCard({ post }: { post: Post }) {
     }
 
     return { totalReactions: total, topReactions: top, reactionsText: text };
-  }, [post.reactionCounts, myReaction, optimisticReactionType]);
+  }, [post.reactionCounts, optimisticReactionType]);
 
   return (
     <Card className="shadow-sm border-none sm:border sm:shadow-none overflow-hidden">
@@ -675,7 +662,7 @@ export function PostCard({ post }: { post: Post }) {
 
       {/* --- REACTIONS LIST DIALOG --- */}
       <Dialog open={isReactionsListOpen} onOpenChange={setIsReactionsListOpen}>
-        <DialogContent className="max-md p-0 h-[60vh] flex flex-col">
+        <DialogContent className="max-md p-0 h-[60vh] flex flex-col focus:outline-none">
             <DialogHeader className="p-4 border-b">
                 <DialogTitle className="text-center text-sm font-bold">People who reacted</DialogTitle>
                 <div className="absolute right-4 top-4">
