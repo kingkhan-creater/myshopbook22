@@ -25,7 +25,6 @@ import Image from 'next/image';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { ThumbsUp, Heart, MessageCircle, MoreHorizontal, Trash2, Laugh, Sparkles, Frown, Angry as AngryIcon, Send, Pencil, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -145,6 +144,10 @@ export function PostCard({ post }: { post: Post }) {
   const [commenterProfiles, setCommenterProfiles] = useState<Map<string, PublicUserProfile>>(new Map());
   const [newComment, setNewComment] = useState('');
   
+  // Optimistic UI states
+  const [optimisticReactionType, setOptimisticReactionType] = useState<ReactionType | null>(null);
+  const [isAnimating, setIsAnimating] = useState(false);
+
   // Modal states
   const [isPopoverOpen, setIsPopoverOpen] = useState(false);
   const [isCommentsOpen, setIsCommentsOpen] = useState(false);
@@ -168,7 +171,12 @@ export function PostCard({ post }: { post: Post }) {
     const unsubReactions = onSnapshot(reactionsRef, snapshot => {
       const reactionsData = snapshot.docs.map(doc => ({ userId: doc.id, ...doc.data() } as Reaction));
       setReactions(reactionsData);
-      setMyReaction(reactionsData.find(r => r.userId === user?.uid) || null);
+      
+      const foundMyReaction = reactionsData.find(r => r.userId === user?.uid) || null;
+      setMyReaction(foundMyReaction);
+      
+      // Sync optimistic state once real data arrives
+      setOptimisticReactionType(foundMyReaction?.type || null);
     });
 
     const commentsQuery = query(collection(db, 'posts', post.id, 'comments'), orderBy('createdAt', 'asc'));
@@ -213,12 +221,17 @@ export function PostCard({ post }: { post: Post }) {
   }, [comments, commenterProfiles]);
 
 
-  const handleReaction = async (newType: ReactionType) => {
+  const handleReaction = useCallback((newType: ReactionType) => {
     if (!user) return;
     setIsPopoverOpen(false);
 
     const oldType = myReaction?.type;
     const isUnReacting = oldType === newType;
+
+    // --- Optimistic UI Update ---
+    setIsAnimating(true);
+    setOptimisticReactionType(isUnReacting ? null : newType);
+    setTimeout(() => setIsAnimating(false), 400); // Clear animation after bounce
 
     const postRef = doc(db, 'posts', post.id);
     const reactionRef = doc(db, 'posts', post.id, 'reactions', user.uid);
@@ -245,7 +258,20 @@ export function PostCard({ post }: { post: Post }) {
     if (Object.keys(updates).length > 0) {
         updateDoc(postRef, updates).catch(err => {
             console.error("Failed to update reaction counts", err);
+            // Revert optimistic change on error
+            setOptimisticReactionType(oldType || null);
+            toast({ variant: 'destructive', title: 'Error', description: 'Failed to update reaction.' });
         });
+    }
+  }, [user, myReaction, post.id, profile?.photoUrl, toast]);
+
+  const handleLikeTap = () => {
+    if (optimisticReactionType) {
+        // If already reacted, toggle off the current one
+        handleReaction(optimisticReactionType);
+    } else {
+        // If no reaction, default to LIKE
+        handleReaction('LIKE');
     }
   };
 
@@ -310,7 +336,17 @@ export function PostCard({ post }: { post: Post }) {
   }, [post.id, toast]);
 
   const { totalReactions, topReactions, reactionsText } = useMemo(() => {
-    const counts = post.reactionCounts || {};
+    const counts = { ...(post.reactionCounts || {}) };
+    
+    // Adjust counts based on optimistic local state
+    const serverType = myReaction?.type;
+    const clientType = optimisticReactionType;
+    
+    if (serverType !== clientType) {
+        if (serverType) counts[serverType] = (counts[serverType] || 0) - 1;
+        if (clientType) counts[clientType] = (counts[clientType] || 0) + 1;
+    }
+
     const total = Object.values(counts).reduce((sum, count) => sum + (count || 0), 0);
     const top = Object.entries(counts)
       .filter(([, count]) => (count || 0) > 0)
@@ -320,7 +356,7 @@ export function PostCard({ post }: { post: Post }) {
     
     let text = "";
     if (total > 0) {
-        if (myReaction) {
+        if (clientType) {
             text = total === 1 ? "You" : (total === 2 ? "You and 1 other" : `You and ${total - 1} others`);
         } else {
             text = `${total}`;
@@ -328,7 +364,7 @@ export function PostCard({ post }: { post: Post }) {
     }
 
     return { totalReactions: total, topReactions: top, reactionsText: text };
-  }, [post.reactionCounts, myReaction]);
+  }, [post.reactionCounts, myReaction, optimisticReactionType]);
 
   return (
     <Card className="shadow-sm border-none md:border md:shadow-none">
@@ -384,11 +420,18 @@ export function PostCard({ post }: { post: Post }) {
         <div className="flex w-full">
           <Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
             <PopoverTrigger asChild>
-              <button className="flex-1 h-9 rounded-md flex items-center justify-center gap-2 hover:bg-muted transition-colors active:scale-95 duration-100">
-                {myReaction ? (
-                  <span className={cn('flex items-center gap-2 font-bold text-xs', reactionColors[myReaction.type])}>
-                    {React.cloneElement(reactionIcons[myReaction.type] as React.ReactElement, { className: 'h-4 w-4' })}
-                    {myReaction.type}
+              <button 
+                onClick={handleLikeTap}
+                className="flex-1 h-9 rounded-md flex items-center justify-center gap-2 hover:bg-muted transition-colors active:scale-95 duration-100"
+              >
+                {optimisticReactionType ? (
+                  <span className={cn(
+                    'flex items-center gap-2 font-bold text-xs', 
+                    reactionColors[optimisticReactionType],
+                    isAnimating && "animate-like-bounce"
+                  )}>
+                    {React.cloneElement(reactionIcons[optimisticReactionType] as React.ReactElement, { className: 'h-4 w-4' })}
+                    {optimisticReactionType}
                   </span>
                 ) : (
                   <span className="flex items-center gap-2 text-muted-foreground font-bold text-xs">
@@ -403,7 +446,7 @@ export function PostCard({ post }: { post: Post }) {
                   <button 
                     key={type} 
                     className="rounded-full h-10 w-10 flex items-center justify-center hover:scale-125 hover:-translate-y-1 transition-all duration-200 active:scale-110" 
-                    onClick={() => handleReaction(type)}
+                    onClick={(e) => { e.stopPropagation(); handleReaction(type); }}
                     title={type}
                   >
                     {reactionIcons[type]}
