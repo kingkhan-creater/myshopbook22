@@ -148,6 +148,8 @@ export const ReactionTypes: ReactionType[] = ['LIKE', 'LOVE', 'HAHA', 'WOW', 'SA
 
 export interface Reaction {
   userId: string;
+  userName?: string;
+  userPhotoUrl?: string;
   type: ReactionType;
   createdAt: Timestamp;
 }

@@ -13,11 +13,10 @@ import {
   orderBy,
   serverTimestamp,
   updateDoc,
-  getDoc,
   getDocs,
   increment,
-  runTransaction,
   where,
+  setDoc,
 } from 'firebase/firestore';
 import type { Post, Comment, Reaction, ReactionType, PublicUserProfile } from '@/lib/types';
 import { ReactionTypes } from '@/lib/types';
@@ -28,11 +27,14 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { ThumbsUp, Heart, MessageCircle, MoreHorizontal, Trash2, Laugh, Sparkles, Frown, Angry as AngryIcon, Send, Pencil } from 'lucide-react';
+import { ThumbsUp, Heart, MessageCircle, MoreHorizontal, Trash2, Laugh, Sparkles, Frown, Angry as AngryIcon, Send, Pencil, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose } from '@/components/ui/dialog';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
 
 
 const reactionIcons: { [key in ReactionType]: React.ReactNode } = {
@@ -81,35 +83,44 @@ function CommentItem({
 
   return (
     <div className="flex items-start gap-2 group">
-      <Avatar className="h-8 w-8">
+      <Avatar className="h-8 w-8 flex-shrink-0">
         <AvatarImage src={profile?.photoUrl ?? undefined} />
         <AvatarFallback>{getInitials(comment.userName)}</AvatarFallback>
       </Avatar>
-      <div className="flex-1">
+      <div className="flex-1 min-w-0">
         {isEditing ? (
           <div className="space-y-2">
-            <Textarea value={editText} onChange={(e) => setEditText(e.target.value)} rows={2} />
+            <Textarea value={editText} onChange={(e) => setEditText(e.target.value)} rows={2} className="text-sm" />
             <div className="flex gap-2 justify-end">
               <Button variant="ghost" size="sm" onClick={() => setIsEditing(false)}>Cancel</Button>
               <Button size="sm" onClick={handleUpdate}>Save</Button>
             </div>
           </div>
         ) : (
-          <div className="bg-muted rounded-lg px-3 py-2 relative">
-            <p className="font-semibold text-sm">{comment.userName}</p>
-            <p className="text-sm">{comment.text}</p>
-            {comment.isEdited && <p className="text-xs text-muted-foreground">(Edited)</p>}
+          <div className="inline-block bg-muted rounded-2xl px-3 py-2 relative max-w-full overflow-hidden">
+            <p className="font-bold text-xs">{comment.userName}</p>
+            <p className="text-sm break-words">{comment.text}</p>
+            {comment.isEdited && <span className="text-[10px] text-muted-foreground block mt-0.5">Edited</span>}
           </div>
+        )}
+        {!isEditing && (
+            <div className="flex gap-3 px-2 mt-1">
+                <button className="text-[10px] font-bold text-muted-foreground hover:underline">Like</button>
+                <button className="text-[10px] font-bold text-muted-foreground hover:underline">Reply</button>
+                <span className="text-[10px] text-muted-foreground">
+                    {comment.createdAt ? formatDistanceToNow(comment.createdAt.toDate(), { addSuffix: false }) : '...'}
+                </span>
+            </div>
         )}
       </div>
       {isOwner && !isEditing && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100">
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
+            <button className="h-6 w-6 rounded-full flex items-center justify-center hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity">
+              <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
+            </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent>
+          <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={() => setIsEditing(true)}>
               <Pencil className="mr-2 h-4 w-4" /> Edit
             </DropdownMenuItem>
@@ -125,7 +136,7 @@ function CommentItem({
 
 
 export function PostCard({ post }: { post: Post }) {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { toast } = useToast();
   const [author, setAuthor] = useState<PublicUserProfile | null>(null);
   const [reactions, setReactions] = useState<Reaction[]>([]);
@@ -133,7 +144,11 @@ export function PostCard({ post }: { post: Post }) {
   const [comments, setComments] = useState<Comment[]>([]);
   const [commenterProfiles, setCommenterProfiles] = useState<Map<string, PublicUserProfile>>(new Map());
   const [newComment, setNewComment] = useState('');
+  
+  // Modal states
   const [isPopoverOpen, setIsPopoverOpen] = useState(false);
+  const [isCommentsOpen, setIsCommentsOpen] = useState(false);
+  const [isReactionsListOpen, setIsReactionsListOpen] = useState(false);
   
   // Fetch author details
   useEffect(() => {
@@ -191,7 +206,6 @@ export function PostCard({ post }: { post: Post }) {
       }
     };
     
-    // Firestore 'in' query limit is 30. Batch if needed.
     for (let i = 0; i < profilesToFetch.length; i += 30) {
         const batchIds = profilesToFetch.slice(i, i + 30);
         fetchProfiles(batchIds);
@@ -203,34 +217,35 @@ export function PostCard({ post }: { post: Post }) {
     if (!user) return;
     setIsPopoverOpen(false);
 
-    const reactionRef = doc(db, 'posts', post.id, 'reactions', user.uid);
+    const oldType = myReaction?.type;
+    const isUnReacting = oldType === newType;
+
     const postRef = doc(db, 'posts', post.id);
+    const reactionRef = doc(db, 'posts', post.id, 'reactions', user.uid);
 
-    try {
-      await runTransaction(db, async (transaction) => {
-        const reactionSnap = await transaction.get(reactionRef);
-        const oldReactionType = reactionSnap.exists() ? (reactionSnap.data() as Reaction).type : null;
-        const isUnReacting = oldReactionType === newType;
+    const updates: { [key: string]: any } = {};
 
-        const updates: { [key: string]: any } = {};
+    if (oldType) {
+        updates[`reactionCounts.${oldType}`] = increment(-1);
+    }
 
-        if (oldReactionType) {
-          updates[`reactionCounts.${oldReactionType}`] = increment(-1);
-        }
+    if (!isUnReacting) {
+        setDoc(reactionRef, { 
+            userId: user.uid, 
+            userName: user.displayName, 
+            userPhotoUrl: profile?.photoUrl || null,
+            type: newType, 
+            createdAt: serverTimestamp() 
+        });
+        updates[`reactionCounts.${newType}`] = increment(1);
+    } else {
+        deleteDoc(reactionRef);
+    }
 
-        if (!isUnReacting) {
-          transaction.set(reactionRef, { userId: user.uid, type: newType, createdAt: serverTimestamp() });
-          updates[`reactionCounts.${newType}`] = increment(1);
-        } else {
-          transaction.delete(reactionRef);
-        }
-        
-        if (Object.keys(updates).length > 0) {
-          transaction.update(postRef, updates);
-        }
-      });
-    } catch (e: any) {
-      toast({ variant: "destructive", title: "Error", description: `Could not apply reaction. ${e.message}` });
+    if (Object.keys(updates).length > 0) {
+        updateDoc(postRef, updates).catch(err => {
+            console.error("Failed to update reaction counts", err);
+        });
     }
   };
 
@@ -238,24 +253,26 @@ export function PostCard({ post }: { post: Post }) {
     e.preventDefault();
     if (!user || !newComment.trim()) return;
 
+    const commentText = newComment.trim();
+    setNewComment('');
+
     try {
       const commentsRef = collection(db, 'posts', post.id, 'comments');
       await addDoc(commentsRef, {
         userId: user.uid,
         userName: user.displayName || 'Anonymous',
-        text: newComment.trim(),
+        text: commentText,
         createdAt: serverTimestamp()
       });
       const postRef = doc(db, 'posts', post.id);
       await updateDoc(postRef, { commentCount: increment(1) });
-      setNewComment('');
     } catch (e) {
       toast({ variant: 'destructive', title: 'Error', description: 'Could not post comment.' });
     }
   };
 
   const handleDeletePost = async () => {
-    if (user?.uid !== post.userId) return;
+    if (user?.uid !== post.userId || profile?.role !== 'OWNER') return;
     if (!window.confirm("Are you sure you want to delete this post?")) return;
     
     try {
@@ -275,7 +292,6 @@ export function PostCard({ post }: { post: Post }) {
         updatedAt: serverTimestamp(),
         isEdited: true
       });
-      toast({ title: "Comment updated" });
     } catch (e) {
       toast({ variant: 'destructive', title: 'Error', description: 'Could not update comment.' });
     }
@@ -288,13 +304,12 @@ export function PostCard({ post }: { post: Post }) {
     try {
       await deleteDoc(commentRef);
       await updateDoc(postRef, { commentCount: increment(-1) });
-      toast({ title: "Comment deleted" });
     } catch (e) {
       toast({ variant: 'destructive', title: 'Error', description: 'Could not delete comment.' });
     }
   }, [post.id, toast]);
 
-  const { totalReactions, topReactions } = useMemo(() => {
+  const { totalReactions, topReactions, reactionsText } = useMemo(() => {
     const counts = post.reactionCounts || {};
     const total = Object.values(counts).reduce((sum, count) => sum + (count || 0), 0);
     const top = Object.entries(counts)
@@ -302,107 +317,211 @@ export function PostCard({ post }: { post: Post }) {
       .sort(([, a], [, b]) => (b || 0) - (a || 0))
       .slice(0, 3)
       .map(([type]) => type as ReactionType);
-    return { totalReactions: total, topReactions: top };
-  }, [post.reactionCounts]);
+    
+    let text = "";
+    if (total > 0) {
+        if (myReaction) {
+            text = total === 1 ? "You" : (total === 2 ? "You and 1 other" : `You and ${total - 1} others`);
+        } else {
+            text = `${total}`;
+        }
+    }
+
+    return { totalReactions: total, topReactions: top, reactionsText: text };
+  }, [post.reactionCounts, myReaction]);
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center gap-3">
-        <Avatar>
+    <Card className="shadow-sm border-none md:border md:shadow-none">
+      <CardHeader className="flex flex-row items-center gap-3 p-4">
+        <Avatar className="h-10 w-10">
           <AvatarImage src={author?.photoUrl ?? undefined} />
           <AvatarFallback>{getInitials(author?.fullName || post.userName)}</AvatarFallback>
         </Avatar>
         <div className="flex-1">
-          <p className="font-semibold">{author?.fullName || post.userName}</p>
-          <p className="text-xs text-muted-foreground">
+          <p className="font-bold text-sm hover:underline cursor-pointer">{author?.fullName || post.userName}</p>
+          <p className="text-[10px] text-muted-foreground">
             {post.createdAt ? formatDistanceToNow(post.createdAt.toDate(), { addSuffix: true }) : '...'}
           </p>
         </div>
-        {user?.uid === post.userId && (
+        {user?.uid === post.userId && profile?.role === 'OWNER' && (
           <DropdownMenu>
-            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal /></Button></DropdownMenuTrigger>
-            <DropdownMenuContent>
+            <DropdownMenuTrigger asChild><button className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-muted"><MoreHorizontal className="h-5 w-5 text-muted-foreground" /></button></DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={handleDeletePost} className="text-destructive focus:text-destructive"><Trash2 className="mr-2 h-4 w-4" />Delete Post</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         )}
       </CardHeader>
-      <CardContent>
-        {post.text && <p className="whitespace-pre-wrap mb-4">{post.text}</p>}
+      <CardContent className="px-4 py-0 pb-3">
+        {post.text && <p className="text-sm whitespace-pre-wrap mb-3 leading-snug">{post.text}</p>}
         {post.imageUrl && (
-          <div className="relative w-full aspect-video rounded-lg overflow-hidden">
-            <Image src={post.imageUrl} alt="Post image" layout="fill" objectFit="contain" className="bg-muted" />
+          <div className="relative w-full aspect-video rounded-lg overflow-hidden -mx-4 md:mx-0 md:rounded-md bg-muted">
+            <Image src={post.imageUrl} alt="Post image" layout="fill" objectFit="contain" />
           </div>
         )}
       </CardContent>
-      <CardFooter className="flex flex-col items-start gap-4">
-        {(totalReactions > 0 || comments.length > 0) && (
-            <div className="flex justify-between items-center w-full text-muted-foreground text-sm">
-                <div className="flex items-center gap-1">
-                {topReactions.map(type => React.cloneElement(reactionIcons[type] as React.ReactElement, { key: type, className: 'h-4 w-4' }))}
-                {totalReactions > 0 && <span className="ml-1">{totalReactions}</span>}
+      <CardFooter className="flex flex-col items-start gap-3 p-4 pt-2">
+        {(totalReactions > 0 || post.commentCount > 0) && (
+            <div className="flex justify-between items-center w-full text-muted-foreground text-[12px] h-6">
+                <div className="flex items-center gap-1 cursor-pointer hover:underline" onClick={() => setIsReactionsListOpen(true)}>
+                    <div className="flex -space-x-1 mr-1">
+                        {topReactions.map(type => (
+                            <div key={type} className="rounded-full border border-background bg-background h-4 w-4 flex items-center justify-center shadow-sm">
+                                {React.cloneElement(reactionIcons[type] as React.ReactElement, { className: 'h-3 w-3' })}
+                            </div>
+                        ))}
+                    </div>
+                    <span>{reactionsText}</span>
                 </div>
-                {comments.length > 0 && <span>{comments.length} Comments</span>}
+                {post.commentCount > 0 && (
+                    <span className="hover:underline cursor-pointer" onClick={() => setIsCommentsOpen(true)}>
+                        {post.commentCount} {post.commentCount === 1 ? 'comment' : 'comments'}
+                    </span>
+                )}
             </div>
         )}
-        <div className="flex w-full border-t border-b py-1">
+        <Separator className="bg-border/50" />
+        <div className="flex w-full">
           <Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
             <PopoverTrigger asChild>
-              <Button variant="ghost" className="flex-1">
+              <button className="flex-1 h-9 rounded-md flex items-center justify-center gap-2 hover:bg-muted transition-colors active:scale-95 duration-100">
                 {myReaction ? (
-                  <span className={cn('flex items-center gap-2', reactionColors[myReaction.type])}>
+                  <span className={cn('flex items-center gap-2 font-bold text-xs', reactionColors[myReaction.type])}>
                     {React.cloneElement(reactionIcons[myReaction.type] as React.ReactElement, { className: 'h-4 w-4' })}
                     {myReaction.type}
                   </span>
                 ) : (
-                  <span className="flex items-center gap-2">
-                    <ThumbsUp className="mr-2 h-4 w-4" /> Like
+                  <span className="flex items-center gap-2 text-muted-foreground font-bold text-xs">
+                    <ThumbsUp className="h-4 w-4" /> Like
                   </span>
                 )}
-              </Button>
+              </button>
             </PopoverTrigger>
-            <PopoverContent className="w-auto p-1">
-              <div className="flex gap-1">
+            <PopoverContent side="top" align="center" className="w-auto p-1 rounded-full shadow-2xl border-none bg-background/95 backdrop-blur-sm animate-in fade-in zoom-in slide-in-from-bottom-2 duration-200">
+              <div className="flex gap-1.5 p-1 px-2">
                 {ReactionTypes.map(type => (
-                  <Button key={type} variant="ghost" size="icon" className="rounded-full h-8 w-8 hover:scale-125 transition-transform" onClick={() => handleReaction(type)}>
+                  <button 
+                    key={type} 
+                    className="rounded-full h-10 w-10 flex items-center justify-center hover:scale-125 hover:-translate-y-1 transition-all duration-200 active:scale-110" 
+                    onClick={() => handleReaction(type)}
+                    title={type}
+                  >
                     {reactionIcons[type]}
-                  </Button>
+                  </button>
                 ))}
               </div>
             </PopoverContent>
           </Popover>
-          <Button variant="ghost" className="flex-1">
-            <MessageCircle className="mr-2 h-4 w-4" /> Comment
-          </Button>
+          <button 
+            className="flex-1 h-9 rounded-md flex items-center justify-center gap-2 hover:bg-muted transition-colors text-muted-foreground font-bold text-xs"
+            onClick={() => setIsCommentsOpen(true)}
+          >
+            <MessageCircle className="h-4 w-4" /> Comment
+          </button>
         </div>
-        <div className="w-full space-y-4">
-          {comments.map(comment => (
-            <CommentItem 
-                key={comment.id}
-                comment={comment}
-                profile={commenterProfiles.get(comment.userId)}
-                isOwner={user?.uid === comment.userId}
-                onDelete={handleDeleteComment}
-                onUpdate={handleUpdateComment}
-            />
-          ))}
-        </div>
-        <form onSubmit={handleAddComment} className="w-full flex items-center gap-2">
-          <Avatar className="h-8 w-8">
+        
+        {/* Quick Comment Input */}
+        <div className="w-full flex items-center gap-2 mt-1">
+          <Avatar className="h-8 w-8 flex-shrink-0">
             <AvatarImage src={commenterProfiles.get(user?.uid || '')?.photoUrl ?? undefined} />
             <AvatarFallback>{getInitials(user?.displayName || '')}</AvatarFallback>
           </Avatar>
-          <Input
-            placeholder="Write a comment..."
-            className="flex-1"
-            value={newComment}
-            onChange={e => setNewComment(e.target.value)}
-          />
-          <Button type="submit" size="sm" disabled={!newComment.trim()}>
-            <Send className="h-4 w-4" />
-          </Button>
-        </form>
+          <form onSubmit={handleAddComment} className="flex-1 flex items-center relative">
+            <input
+                placeholder={`Write a comment...`}
+                className="w-full bg-muted hover:bg-muted/80 focus:bg-muted rounded-full px-4 py-2 text-sm outline-none transition-colors"
+                value={newComment}
+                onChange={e => setNewComment(e.target.value)}
+            />
+            <button type="submit" disabled={!newComment.trim()} className="absolute right-3 text-primary disabled:opacity-30">
+                <Send className="h-4 w-4" />
+            </button>
+          </form>
+        </div>
       </CardFooter>
+
+      {/* --- ALL COMMENTS DIALOG --- */}
+      <Dialog open={isCommentsOpen} onOpenChange={setIsCommentsOpen}>
+        <DialogContent className="max-w-xl p-0 h-[80vh] flex flex-col focus:outline-none">
+            <DialogHeader className="p-4 border-b">
+                <DialogTitle className="text-center text-sm font-bold">Comments</DialogTitle>
+                <div className="absolute right-4 top-4">
+                    <DialogClose asChild><button className="rounded-full h-8 w-8 flex items-center justify-center bg-muted hover:bg-muted/80"><X className="h-4 w-4"/></button></DialogClose>
+                </div>
+            </DialogHeader>
+            <ScrollArea className="flex-1 p-4">
+                <div className="space-y-4">
+                    {comments.length === 0 ? (
+                        <div className="py-10 text-center text-muted-foreground">No comments yet.</div>
+                    ) : (
+                        comments.map(comment => (
+                            <CommentItem 
+                                key={comment.id}
+                                comment={comment}
+                                profile={commenterProfiles.get(comment.userId)}
+                                isOwner={user?.uid === comment.userId}
+                                onDelete={handleDeleteComment}
+                                onUpdate={handleUpdateComment}
+                            />
+                        ))
+                    )}
+                </div>
+            </ScrollArea>
+            <div className="p-4 border-t bg-background">
+                <div className="flex items-center gap-2">
+                    <Avatar className="h-8 w-8 flex-shrink-0">
+                        <AvatarImage src={commenterProfiles.get(user?.uid || '')?.photoUrl ?? undefined} />
+                        <AvatarFallback>{getInitials(user?.displayName || '')}</AvatarFallback>
+                    </Avatar>
+                    <form onSubmit={handleAddComment} className="flex-1 flex items-center relative">
+                        <input
+                            placeholder="Write a comment..."
+                            className="w-full bg-muted rounded-full px-4 py-2 text-sm outline-none"
+                            value={newComment}
+                            onChange={e => setNewComment(e.target.value)}
+                            autoFocus
+                        />
+                        <button type="submit" disabled={!newComment.trim()} className="absolute right-3 text-primary disabled:opacity-30">
+                            <Send className="h-4 w-4" />
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* --- REACTIONS LIST DIALOG --- */}
+      <Dialog open={isReactionsListOpen} onOpenChange={setIsReactionsListOpen}>
+        <DialogContent className="max-w-md p-0 h-[60vh] flex flex-col">
+            <DialogHeader className="p-4 border-b">
+                <DialogTitle className="text-center text-sm font-bold">People who reacted</DialogTitle>
+                <div className="absolute right-4 top-4">
+                    <DialogClose asChild><button className="rounded-full h-8 w-8 flex items-center justify-center bg-muted hover:bg-muted/80"><X className="h-4 w-4"/></button></DialogClose>
+                </div>
+            </DialogHeader>
+            <ScrollArea className="flex-1">
+                <div className="p-2">
+                    {reactions.map(react => (
+                        <div key={react.userId} className="flex items-center justify-between p-2 rounded-lg hover:bg-muted transition-colors cursor-pointer">
+                            <div className="flex items-center gap-3">
+                                <div className="relative">
+                                    <Avatar className="h-10 w-10">
+                                        <AvatarImage src={react.userPhotoUrl ?? undefined} />
+                                        <AvatarFallback>{getInitials(react.userName || '')}</AvatarFallback>
+                                    </Avatar>
+                                    <div className="absolute -bottom-1 -right-1 bg-background rounded-full p-0.5 shadow-sm border">
+                                        {React.cloneElement(reactionIcons[react.type] as React.ReactElement, { className: 'h-3 w-3' })}
+                                    </div>
+                                </div>
+                                <span className="font-bold text-sm">{react.userName || 'Anonymous'}</span>
+                            </div>
+                            <Button variant="ghost" size="sm" className="bg-muted hover:bg-muted/80 h-8 px-3 text-xs font-bold">View Profile</Button>
+                        </div>
+                    ))}
+                </div>
+            </ScrollArea>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
