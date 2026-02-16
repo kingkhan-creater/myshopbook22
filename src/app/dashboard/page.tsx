@@ -13,18 +13,19 @@ import {
 } from 'firebase/firestore';
 import type { Supplier, PurchaseBill } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Receipt } from 'lucide-react';
+import { Receipt, Package, Users, Truck, Bell, Wallet, Store, MessageSquare } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatDistanceToNow } from 'date-fns';
 import Link from 'next/link';
 import { StoriesSection } from '@/components/dashboard/stories-section';
 
 const overviewCards = [
-  { title: 'Items', description: 'Manage inventory', icon: 'Package', href: '/dashboard/items' },
-  { title: 'Customers', description: 'View customers', icon: 'Users', href: '/dashboard/customers' },
-  { title: 'Suppliers', description: 'Manage suppliers', icon: 'Truck', href: '/dashboard/suppliers' },
-  { title: 'Reminders', description: 'Track tasks', icon: 'Bell', href: '/dashboard/reminders' },
-  { title: 'Expenses', description: 'Track spending', icon: 'Wallet', href: '/dashboard/expenses' },
+  { title: 'Items', description: 'Manage inventory', icon: Package, href: '/dashboard/items' },
+  { title: 'Customers', description: 'View customers', icon: Users, href: '/dashboard/customers' },
+  { title: 'Suppliers', description: 'Manage suppliers', icon: Truck, href: '/dashboard/suppliers' },
+  { title: 'Reminders', description: 'Track tasks', icon: Bell, href: '/dashboard/reminders' },
+  { title: 'Expenses', description: 'Track spending', icon: Wallet, href: '/dashboard/expenses' },
+  { title: 'Marketplace', description: 'Community listings', icon: Store, href: '/dashboard/marketplace' },
 ];
 
 interface Activity extends PurchaseBill {
@@ -123,6 +124,7 @@ export default function DashboardPage() {
               <Card className="hover:bg-card/90 hover:shadow-md transition-all h-full">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">{card.title}</CardTitle>
+                  <card.icon className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
                   <p className="text-xs text-muted-foreground">{card.description}</p>
@@ -132,11 +134,14 @@ export default function DashboardPage() {
           ))}
            <div className="lg:col-span-2 md:col-span-2 col-span-1">
              <Link href="/dashboard/friends">
-                <Card className="hover:bg-card/90 hover:shadow-md transition-all h-full flex flex-col justify-center">
-                    <CardHeader>
-                        <CardTitle>Friends & Chat</CardTitle>
-                        <CardDescription>Connect with other sellers</CardDescription>
+                <Card className="hover:bg-card/90 hover:shadow-md transition-all h-full flex flex-col justify-center border-primary/20 bg-primary/5">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-base">Friends & Chat</CardTitle>
+                        <MessageSquare className="h-5 w-5 text-primary" />
                     </CardHeader>
+                    <CardContent>
+                        <p className="text-xs text-muted-foreground">Connect with other sellers and grow your network.</p>
+                    </CardContent>
                 </Card>
              </Link>
            </div>
