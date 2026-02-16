@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { db } from '@/lib/firebase';
 import {
@@ -122,7 +122,7 @@ function CommentItem({
         deleteDoc(likeRef);
         updateDoc(commentRef, { likeCount: increment(-1) });
     }
-  }, [user, optimisticLike, postId, comment.id, myProfile, toast]);
+  }, [user, optimisticLike, postId, comment.id, myProfile]);
 
   const canDelete = user?.uid === comment.userId || user?.uid === postOwnerId;
   const canEdit = user?.uid === comment.userId;
@@ -253,6 +253,10 @@ export function PostCard({ post }: { post: Post }) {
   const [isPopoverOpen, setIsPopoverOpen] = useState(false);
   const [isCommentsOpen, setIsCommentsOpen] = useState(false);
   const [isReactionsListOpen, setIsReactionsListOpen] = useState(false);
+
+  // Refs for long press logic
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isLongPressRef = useRef(false);
   
   // Fetch author details
   useEffect(() => {
@@ -366,13 +370,44 @@ export function PostCard({ post }: { post: Post }) {
     }
   }, [user, myReaction, post.id, profile?.photoUrl, toast]);
 
-  const handleLikeTap = () => {
+  const handleLikeTap = useCallback(() => {
     if (optimisticReactionType) {
         handleReaction(optimisticReactionType);
     } else {
         handleReaction('LIKE');
     }
-  };
+  }, [optimisticReactionType, handleReaction]);
+
+  const handlePointerDown = useCallback(() => {
+    isLongPressRef.current = false;
+    longPressTimer.current = setTimeout(() => {
+      isLongPressRef.current = true;
+      setIsPopoverOpen(true);
+    }, 500);
+  }, []);
+
+  const handlePointerUp = useCallback(() => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  }, []);
+
+  const handlePointerLeave = useCallback(() => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  }, []);
+
+  const handleButtonClick = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only toggle the default like if it's NOT a long press
+    if (!isLongPressRef.current) {
+      handleLikeTap();
+    }
+  }, [handleLikeTap]);
 
   const handleAddComment = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -521,7 +556,11 @@ export function PostCard({ post }: { post: Post }) {
           <Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
             <PopoverTrigger asChild>
               <button 
-                onClick={handleLikeTap}
+                onPointerDown={handlePointerDown}
+                onPointerUp={handlePointerUp}
+                onPointerLeave={handlePointerLeave}
+                onPointerCancel={handlePointerLeave}
+                onClick={handleButtonClick}
                 className="flex-1 h-9 rounded-md flex items-center justify-center gap-2 hover:bg-muted transition-colors active:scale-95 duration-100"
               >
                 {optimisticReactionType ? (
@@ -636,7 +675,7 @@ export function PostCard({ post }: { post: Post }) {
 
       {/* --- REACTIONS LIST DIALOG --- */}
       <Dialog open={isReactionsListOpen} onOpenChange={setIsReactionsListOpen}>
-        <DialogContent className="max-w-md p-0 h-[60vh] flex flex-col">
+        <DialogContent className="max-md p-0 h-[60vh] flex flex-col">
             <DialogHeader className="p-4 border-b">
                 <DialogTitle className="text-center text-sm font-bold">People who reacted</DialogTitle>
                 <div className="absolute right-4 top-4">
