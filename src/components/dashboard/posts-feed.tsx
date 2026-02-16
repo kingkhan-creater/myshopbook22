@@ -84,13 +84,14 @@ function CreatePostForm() {
   }
 
   return (
-    <Card className="mb-6">
-      <CardContent className="p-4 space-y-4">
+    <Card className="mb-4 sm:mb-6">
+      <CardContent className="p-3 sm:p-4 space-y-4">
         <Textarea
           placeholder={`What's on your mind, ${user?.displayName || 'User'}?`}
           value={text}
           onChange={(e) => setText(e.target.value)}
           rows={3}
+          className="text-sm"
         />
         {photoBase64 && (
             <div className="relative">
@@ -102,9 +103,9 @@ function CreatePostForm() {
         )}
         <div className="flex justify-between items-center">
             <Button variant="ghost" size="icon" onClick={() => photoInputRef.current?.click()}>
-                <ImageIcon />
+                <ImageIcon className="h-5 w-5" />
             </Button>
-            <Button onClick={handleCreatePost} disabled={isSaving}>
+            <Button onClick={handleCreatePost} disabled={isSaving} className="h-9 px-4 text-sm">
                 {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
                 Post
             </Button>
@@ -143,7 +144,7 @@ export function PostsFeed() {
   }, [toast]);
 
   return (
-    <div>
+    <div className="max-w-2xl mx-auto w-full">
       <CreatePostForm />
        {loading ? (
         <div className="space-y-4">
@@ -156,7 +157,7 @@ export function PostsFeed() {
             <p>Be the first one to create a post!</p>
         </div>
        ) : (
-        <div className="space-y-6">
+        <div className="space-y-4 sm:space-y-6">
             {posts.map(post => <PostCard key={post.id} post={post} />)}
         </div>
        )}

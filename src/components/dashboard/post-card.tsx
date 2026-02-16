@@ -32,7 +32,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { useToast } from '@/hooks/use-toast';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose } from '@/components/ui/dialog';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 
 
@@ -153,7 +153,7 @@ function CommentItem({
           </div>
         ) : (
           <div className="inline-block bg-muted rounded-2xl px-3 py-2 relative max-w-full overflow-hidden shadow-sm">
-            <p className="font-bold text-xs">{comment.userName}</p>
+            <p className="font-bold text-xs truncate">{comment.userName}</p>
             <p className="text-sm break-words">{comment.text}</p>
             {comment.isEdited && <span className="text-[10px] text-muted-foreground block mt-0.5">Edited</span>}
             
@@ -223,7 +223,7 @@ function CommentItem({
                                 <AvatarImage src={like.userPhotoUrl ?? undefined} />
                                 <AvatarFallback>{getInitials(like.userName || '')}</AvatarFallback>
                             </Avatar>
-                            <span className="font-bold text-sm">{like.userName || 'Anonymous'}</span>
+                            <span className="font-bold text-sm truncate">{like.userName || 'Anonymous'}</span>
                         </div>
                     ))}
                 </div>
@@ -502,15 +502,15 @@ export function PostCard({ post }: { post: Post }) {
   }, [post.reactionCounts, myReaction, optimisticReactionType]);
 
   return (
-    <Card className="shadow-sm border-none md:border md:shadow-none">
-      <CardHeader className="flex flex-row items-center gap-3 p-4">
-        <Avatar className="h-10 w-10">
+    <Card className="shadow-sm border-none sm:border sm:shadow-none overflow-hidden">
+      <CardHeader className="flex flex-row items-center gap-3 p-3 sm:p-4">
+        <Avatar className="h-10 w-10 flex-shrink-0">
           <AvatarImage src={author?.photoUrl ?? undefined} />
           <AvatarFallback>{getInitials(author?.fullName || post.userName)}</AvatarFallback>
         </Avatar>
-        <div className="flex-1">
-          <p className="font-bold text-sm hover:underline cursor-pointer">{author?.fullName || post.userName}</p>
-          <p className="text-[10px] text-muted-foreground">
+        <div className="flex-1 min-w-0">
+          <p className="font-bold text-sm hover:underline cursor-pointer truncate">{author?.fullName || post.userName}</p>
+          <p className="text-[10px] text-muted-foreground truncate">
             {post.createdAt ? formatDistanceToNow(post.createdAt.toDate(), { addSuffix: true }) : '...'}
           </p>
         </div>
@@ -523,29 +523,29 @@ export function PostCard({ post }: { post: Post }) {
           </DropdownMenu>
         )}
       </CardHeader>
-      <CardContent className="px-4 py-0 pb-3">
-        {post.text && <p className="text-sm whitespace-pre-wrap mb-3 leading-snug">{post.text}</p>}
+      <CardContent className="px-3 sm:px-4 py-0 pb-3">
+        {post.text && <p className="text-sm whitespace-pre-wrap mb-3 leading-snug break-words">{post.text}</p>}
         {post.imageUrl && (
-          <div className="relative w-full aspect-video rounded-lg overflow-hidden -mx-4 md:mx-0 md:rounded-md bg-muted">
+          <div className="relative w-full aspect-video rounded-lg overflow-hidden -mx-3 sm:mx-0 sm:rounded-md bg-muted">
             <Image src={post.imageUrl} alt="Post image" layout="fill" objectFit="contain" />
           </div>
         )}
       </CardContent>
-      <CardFooter className="flex flex-col items-start gap-3 p-4 pt-2">
+      <CardFooter className="flex flex-col items-start gap-2 p-3 sm:p-4 sm:pt-2">
         {(totalReactions > 0 || post.commentCount > 0) && (
             <div className="flex justify-between items-center w-full text-muted-foreground text-[12px] h-6">
-                <div className="flex items-center gap-1 cursor-pointer hover:underline" onClick={() => setIsReactionsListOpen(true)}>
-                    <div className="flex -space-x-1 mr-1">
+                <div className="flex items-center gap-1 cursor-pointer hover:underline min-w-0 flex-1" onClick={() => setIsReactionsListOpen(true)}>
+                    <div className="flex -space-x-1 mr-1 flex-shrink-0">
                         {topReactions.map(type => (
                             <div key={type} className="rounded-full border border-background bg-background h-4 w-4 flex items-center justify-center shadow-sm">
-                                {React.cloneElement(reactionIcons[type] as React.ReactElement, { className: 'h-3 w-3' })}
+                                {React.cloneElement(reactionIcons[type] as React.ReactElement, { className: 'h-2.5 w-2.5' })}
                             </div>
                         ))}
                     </div>
-                    <span>{reactionsText}</span>
+                    <span className="truncate">{reactionsText}</span>
                 </div>
                 {post.commentCount > 0 && (
-                    <span className="hover:underline cursor-pointer" onClick={() => setIsCommentsOpen(true)}>
+                    <span className="hover:underline cursor-pointer flex-shrink-0 ml-2" onClick={() => setIsCommentsOpen(true)}>
                         {post.commentCount} {post.commentCount === 1 ? 'comment' : 'comments'}
                     </span>
                 )}
@@ -686,8 +686,8 @@ export function PostCard({ post }: { post: Post }) {
                 <div className="p-2">
                     {reactions.map(react => (
                         <div key={react.userId} className="flex items-center justify-between p-2 rounded-lg hover:bg-muted transition-colors cursor-pointer">
-                            <div className="flex items-center gap-3">
-                                <div className="relative">
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                                <div className="relative flex-shrink-0">
                                     <Avatar className="h-10 w-10">
                                         <AvatarImage src={react.userPhotoUrl ?? undefined} />
                                         <AvatarFallback>{getInitials(react.userName || '')}</AvatarFallback>
@@ -696,9 +696,9 @@ export function PostCard({ post }: { post: Post }) {
                                         {React.cloneElement(reactionIcons[react.type] as React.ReactElement, { className: 'h-3 w-3' })}
                                     </div>
                                 </div>
-                                <span className="font-bold text-sm">{react.userName || 'Anonymous'}</span>
+                                <span className="font-bold text-sm truncate">{react.userName || 'Anonymous'}</span>
                             </div>
-                            <Button variant="ghost" size="sm" className="bg-muted hover:bg-muted/80 h-8 px-3 text-xs font-bold">View Profile</Button>
+                            <Button variant="ghost" size="sm" className="bg-muted hover:bg-muted/80 h-8 px-3 text-xs font-bold flex-shrink-0 ml-2">View Profile</Button>
                         </div>
                     ))}
                 </div>

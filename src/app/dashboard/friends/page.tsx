@@ -22,7 +22,7 @@ import { UserPlus, UserCheck, UserX, MessageSquare } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import { PostsFeed } from '@/components/dashboard/posts-feed';
-
+import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 
 interface PublicUserProfile {
   uid: string;
@@ -73,7 +73,6 @@ export default function FriendsPage() {
       const friendshipsSnapshot = await getDocs(friendshipsQuery);
       const friendshipsData = friendshipsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Friendship));
       
-      const friendshipMap = new Map(friendshipsData.map(f => [f.id, f]));
       const relatedUserIds = new Set<string>();
       
       const pending: Friendship[] = [];
@@ -169,45 +168,47 @@ export default function FriendsPage() {
       return <p className="text-center text-muted-foreground py-8">{messages[type]}</p>;
     }
     return (
-      <ul className="space-y-4">
+      <ul className="space-y-3 sm:space-y-4">
         {items.map((item) => {
           const userProfile = type === 'find' ? item : item.otherUser;
           if (!userProfile) return null;
 
           return (
-            <li key={userProfile.uid} className="flex items-center justify-between rounded-lg border p-4">
-              <div className="flex items-center gap-4">
-                <Avatar>
+            <li key={userProfile.uid} className="flex items-center justify-between gap-3 rounded-lg border p-3 sm:p-4">
+              <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
+                <Avatar className="h-10 w-10 sm:h-12 sm:w-12 flex-shrink-0">
                   <AvatarImage src={userProfile.photoUrl ?? undefined} />
                   <AvatarFallback>{getInitials(userProfile.fullName)}</AvatarFallback>
                 </Avatar>
-                <div>
-                  <p className="font-semibold">{userProfile.fullName}</p>
-                  {userProfile.shopName && <p className="text-sm text-muted-foreground">{userProfile.shopName}</p>}
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-sm sm:text-base truncate">{userProfile.fullName}</p>
+                  {userProfile.shopName && <p className="text-xs sm:text-sm text-muted-foreground truncate">{userProfile.shopName}</p>}
                 </div>
               </div>
-              {type === 'find' && (
-                <Button size="sm" onClick={() => handleSendRequest(userProfile)}>
-                  <UserPlus className="mr-2 h-4 w-4" /> Add Friend
-                </Button>
-              )}
-              {type === 'pending' && (
-                <div className="flex gap-2">
-                  <Button size="sm" variant="outline" onClick={() => handleUpdateRequest(item.id, 'rejected')}>
-                    <UserX className="mr-2 h-4 w-4" /> Decline
+              <div className="flex-shrink-0">
+                {type === 'find' && (
+                  <Button size="sm" onClick={() => handleSendRequest(userProfile)} className="h-8 text-xs sm:h-9 sm:text-sm">
+                    <UserPlus className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" /> Add Friend
                   </Button>
-                  <Button size="sm" onClick={() => handleUpdateRequest(item.id, 'accepted')}>
-                    <UserCheck className="mr-2 h-4 w-4" /> Accept
-                  </Button>
-                </div>
-              )}
-              {type === 'friends' && (
-                 <Button asChild>
-                    <Link href={`/dashboard/chat/${userProfile.uid}`}>
-                      <MessageSquare className="mr-2 h-4 w-4" /> Chat
-                    </Link>
-                  </Button>
-              )}
+                )}
+                {type === 'pending' && (
+                  <div className="flex gap-1 sm:gap-2">
+                    <Button size="sm" variant="outline" onClick={() => handleUpdateRequest(item.id, 'rejected')} className="h-8 px-2 sm:h-9 sm:px-3">
+                      <UserX className="h-3 w-3 sm:h-4 sm:w-4" />
+                    </Button>
+                    <Button size="sm" onClick={() => handleUpdateRequest(item.id, 'accepted')} className="h-8 px-2 sm:h-9 sm:px-3">
+                      <UserCheck className="h-3 w-3 sm:h-4 sm:w-4" />
+                    </Button>
+                  </div>
+                )}
+                {type === 'friends' && (
+                   <Button asChild size="sm" className="h-8 text-xs sm:h-9 sm:text-sm">
+                      <Link href={`/dashboard/chat/${userProfile.uid}`}>
+                        <MessageSquare className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" /> Chat
+                      </Link>
+                    </Button>
+                )}
+              </div>
             </li>
           );
         })}
@@ -216,30 +217,35 @@ export default function FriendsPage() {
   };
 
   return (
-    <div className="container mx-auto p-4 sm:p-6 lg:p-8">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-3xl font-bold tracking-tight">Community</CardTitle>
-          <CardDescription>Connect with friends and see what's new in the feed.</CardDescription>
+    <div className="container mx-auto p-2 sm:p-6 lg:p-8">
+      <Card className="border-none sm:border shadow-none sm:shadow-sm">
+        <CardHeader className="px-4 py-4 sm:p-6">
+          <CardTitle className="text-2xl sm:text-3xl font-bold tracking-tight">Community</CardTitle>
+          <CardDescription className="text-xs sm:text-sm">Connect with friends and see what's new in the feed.</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-2 sm:p-6">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="feed">Feed</TabsTrigger>
-              <TabsTrigger value="find">Find Friends</TabsTrigger>
-              <TabsTrigger value="pending">Pending</TabsTrigger>
-              <TabsTrigger value="friends">My Friends</TabsTrigger>
-            </TabsList>
-            <TabsContent value="feed" className="mt-4">
+            <div className="relative mb-4">
+              <ScrollArea className="w-full">
+                <TabsList className="inline-flex w-max sm:grid sm:w-full sm:grid-cols-4 p-1">
+                  <TabsTrigger value="feed" className="min-w-[80px] sm:min-w-0">Feed</TabsTrigger>
+                  <TabsTrigger value="find" className="min-w-[100px] sm:min-w-0">Find Friends</TabsTrigger>
+                  <TabsTrigger value="pending" className="min-w-[100px] sm:min-w-0">Pending</TabsTrigger>
+                  <TabsTrigger value="friends" className="min-w-[100px] sm:min-w-0">My Friends</TabsTrigger>
+                </TabsList>
+                <ScrollBar orientation="horizontal" className="invisible" />
+              </ScrollArea>
+            </div>
+            <TabsContent value="feed" className="mt-0">
                 <PostsFeed />
             </TabsContent>
-            <TabsContent value="find" className="mt-4">
+            <TabsContent value="find" className="mt-0">
               {renderList(findFriendsList, 'find')}
             </TabsContent>
-            <TabsContent value="pending" className="mt-4">
+            <TabsContent value="pending" className="mt-0">
               {renderList(pendingRequests, 'pending')}
             </TabsContent>
-            <TabsContent value="friends" className="mt-4">
+            <TabsContent value="friends" className="mt-0">
               {renderList(acceptedFriends, 'friends')}
             </TabsContent>
           </Tabs>
