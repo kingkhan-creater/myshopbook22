@@ -12,7 +12,7 @@ service cloud.firestore {
     
     function isUserOwner(userId) {
       let userData = get(/databases/$(database)/documents/users/$(userId)).data;
-      // Default to 'STAFF' if role doesn't exist to be safe. Only explicit 'OWNER' is owner.
+      // Explicitly check for 'OWNER' role. Default to 'STAFF' if missing.
       return userData != null && userData.get('role', 'STAFF') == 'OWNER';
     }
 
@@ -58,12 +58,13 @@ service cloud.firestore {
         && request.resource.data.userId == request.auth.uid;
 
       allow update: if isAuth() && (
-        ( // Owner can soft-delete their own post
+        ( // Only explicit OWNER role can soft-delete their own post
           resource.data.userId == request.auth.uid &&
           request.resource.data.isDeleted == true &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isDeleted'])
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isDeleted']) &&
+          isUserOwner(request.auth.uid)
         ) ||
-        ( // Allow for reaction and comment counts to be updated
+        ( // Allow for reaction and comment counts to be updated by any auth user
           request.resource.data.diff(resource.data).affectedKeys().hasAny(['commentCount', 'reactionCounts'])
         )
       );
@@ -73,19 +74,14 @@ service cloud.firestore {
 
     match /posts/{postId}/reactions/{userId} {
       allow read: if isAuth();
-      // Users can create, update, or delete their own reaction document.
       allow write: if isAuth() && request.auth.uid == userId;
     }
 
     match /posts/{postId}/comments/{commentId} {
       allow read: if isAuth();
-      
-      allow create: if isAuth()
-        && request.resource.data.userId == request.auth.uid;
-        
+      allow create: if isAuth() && request.resource.data.userId == request.auth.uid;
       allow update: if isAuth() && resource.data.userId == request.auth.uid;
-      
-      allow delete: if isAuth() && resource.data.userId == request.auth.uid;
+      allow delete: if isAuth() && resource.data.userId == request.auth.uid && isUserOwner(request.auth.uid);
     }
 
     /* ================= FRIENDS ================= */
@@ -109,18 +105,15 @@ service cloud.firestore {
       }
 
       allow read: if isMemberOfParentChat() && (request.auth.uid in resource.data.get('deletedFor', [])) == false;
-      
       allow create: if isMemberOfParentChat() && request.resource.data.senderId == request.auth.uid;
 
       allow update: if isMemberOfParentChat() && (
-        // "Delete for me"
-        (
+        ( // "Delete for me"
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deletedFor']) &&
           request.resource.data.deletedFor == resource.data.get('deletedFor', []).concat([request.auth.uid])
         )
         ||
-        // "Delete for everyone"
-        (
+        ( // "Delete for everyone"
           resource.data.senderId == request.auth.uid &&
           request.resource.data.deletedForEveryone == true &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly([
@@ -135,7 +128,7 @@ service cloud.firestore {
     match /stories/{storyId} {
       allow read: if isAuth();
       allow create: if isAuth() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if false; // Stories are immutable
+      allow update, delete: if false; 
     }
 
     /* ================= MARKETPLACE ================= */
@@ -146,7 +139,7 @@ service cloud.firestore {
         && resource.data.sellerId == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
         && isUserOwner(request.auth.uid);
-      allow delete: if false; // Use status 'SOLD' instead of deleting
+      allow delete: if false;
     }
   }
 }

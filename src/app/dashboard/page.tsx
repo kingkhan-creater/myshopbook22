@@ -10,24 +10,22 @@ import {
   limit,
   onSnapshot,
   getDocs,
-  Timestamp,
 } from 'firebase/firestore';
 import type { Supplier, PurchaseBill } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Package, Users, Truck, Bell, Wallet, Receipt } from 'lucide-react';
+import { Receipt } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatDistanceToNow } from 'date-fns';
 import Link from 'next/link';
 import { StoriesSection } from '@/components/dashboard/stories-section';
 
 const overviewCards = [
-  { title: 'Items', description: 'Manage inventory', icon: Package, href: '/dashboard/items' },
-  { title: 'Customers', description: 'View customers', icon: Users, href: '/dashboard/customers' },
-  { title: 'Suppliers', description: 'Manage suppliers', icon: Truck, href: '/dashboard/suppliers' },
-  { title: 'Reminders', description: 'Track tasks', icon: Bell, href: '/dashboard/reminders' },
-  { title: 'Expenses', description: 'Track spending', icon: Wallet, href: '/dashboard/expenses' },
+  { title: 'Items', description: 'Manage inventory', icon: 'Package', href: '/dashboard/items' },
+  { title: 'Customers', description: 'View customers', icon: 'Users', href: '/dashboard/customers' },
+  { title: 'Suppliers', description: 'Manage suppliers', icon: 'Truck', href: '/dashboard/suppliers' },
+  { title: 'Reminders', description: 'Track tasks', icon: 'Bell', href: '/dashboard/reminders' },
+  { title: 'Expenses', description: 'Track spending', icon: 'Wallet', href: '/dashboard/expenses' },
 ];
-
 
 interface Activity extends PurchaseBill {
   supplierName?: string;
@@ -41,30 +39,27 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!user) return;
 
-    const fetchActivities = async () => {
-      setLoading(true);
+    let unsubscribe: (() => void) | null = null;
 
+    const initializeDashboard = async () => {
+      setLoading(true);
       try {
-        // 1. Fetch all suppliers to create a name map
-        const suppliersRef = collection(db, 'users', user.uid, 'suppliers');
-        const suppliersSnapshot = await getDocs(suppliersRef);
+        // Fetch suppliers for mapping names
+        const suppliersSnapshot = await getDocs(collection(db, 'users', user.uid, 'suppliers'));
         const suppliersMap = new Map<string, string>();
         suppliersSnapshot.forEach(doc => {
-          const supplierData = doc.data() as Supplier;
-          if (supplierData.name) {
-             suppliersMap.set(doc.id, supplierData.name);
-          }
+          const data = doc.data();
+          suppliersMap.set(doc.id, data.name || 'Unknown Supplier');
         });
 
-        // 2. Listen for recent purchase bills
-        // As other features are connected, they can be added here.
+        // Setup real-time listener for purchase activities
         const billsQuery = query(
           collection(db, 'users', user.uid, 'purchaseBills'),
           orderBy('createdAt', 'desc'),
           limit(5)
         );
 
-        const unsubscribe = onSnapshot(billsQuery, (snapshot) => {
+        unsubscribe = onSnapshot(billsQuery, (snapshot) => {
           const fetchedActivities = snapshot.docs.map(doc => {
             const bill = doc.data() as PurchaseBill;
             return {
@@ -76,26 +71,19 @@ export default function DashboardPage() {
           setActivities(fetchedActivities);
           setLoading(false);
         }, (error) => {
-            console.error("Error fetching activities:", error);
-            setLoading(false);
+          console.error("Dashboard Listener Error:", error);
+          setLoading(false);
         });
-        
-        return unsubscribe;
-
       } catch (error) {
-        console.error("Error fetching activities:", error);
+        console.error("Dashboard Setup Error:", error);
         setLoading(false);
       }
     };
 
-    const unsubscribePromise = fetchActivities();
+    initializeDashboard();
 
     return () => {
-      unsubscribePromise.then(unsubscribe => {
-        if (unsubscribe) {
-          unsubscribe();
-        }
-      });
+      if (unsubscribe) unsubscribe();
     };
   }, [user]);
 
@@ -135,7 +123,6 @@ export default function DashboardPage() {
               <Card className="hover:bg-card/90 hover:shadow-md transition-all h-full">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">{card.title}</CardTitle>
-                  <card.icon className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
                   <p className="text-xs text-muted-foreground">{card.description}</p>

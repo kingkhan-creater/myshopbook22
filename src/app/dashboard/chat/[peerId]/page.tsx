@@ -22,7 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, Send, Paperclip, Image as ImageIcon, Package, X, MoreVertical, Trash2 } from 'lucide-react';
+import { ArrowLeft, Send, Paperclip, Image as ImageIcon, Package, MoreVertical, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -94,7 +94,6 @@ export default function ChatPage() {
     scrollToBottom();
   }, [messages]);
 
-  // Combined effect for setting up the chat session
   useEffect(() => {
     if (!user || !peerId || !chatId) return;
 
@@ -118,9 +117,8 @@ export default function ChatPage() {
         const userDocSnap = await getDoc(userDocRef);
 
         if (userDocSnap.exists()) {
-          const profileData = { uid: peerId, ...userDocSnap.data() } as PublicUserProfile;
-          setPeerProfile(profileData);
-        } else { throw new Error('Peer user profile not found.'); }
+          setPeerProfile({ uid: peerId, ...userDocSnap.data() } as PublicUserProfile);
+        }
 
         const chatRef = doc(db, 'chats', chatId);
         await setDoc(chatRef, { members: [user.uid, peerId], createdAt: serverTimestamp() }, { merge: true });
@@ -130,27 +128,20 @@ export default function ChatPage() {
         unsubscribeMessages = onSnapshot(messagesQuery, (snapshot) => {
           const newMessages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
           setMessages(newMessages.filter(m => !(m.deletedFor?.includes(user.uid))));
-        }, (error) => {
-          console.error("Error listening to messages:", error);
-          toast({ variant: 'destructive', title: 'Connection Error', description: 'Could not listen for new messages.' });
         });
 
       } catch (error: any) {
-        console.error("Error setting up chat:", error);
-        toast({ variant: 'destructive', title: 'Error', description: `Failed to load chat: ${error.message}` });
-        router.replace('/dashboard/friends');
+        console.error("Chat Setup Error:", error);
+        toast({ variant: 'destructive', title: 'Error', description: 'Failed to load chat.' });
       } finally { setLoading(false); }
     };
 
     setupChat();
     return () => {
-      if (unsubscribeMessages) {
-        unsubscribeMessages();
-      }
+      if (unsubscribeMessages) unsubscribeMessages();
     };
   }, [user, peerId, chatId, router, toast]);
 
-  // Fetch user's items for sharing dialog
   useEffect(() => {
     if (isItemDialogOpen && user) {
         setLoadingItems(true);
@@ -176,9 +167,13 @@ export default function ChatPage() {
         });
         
         const chatRef = doc(db, 'chats', chatId);
-        await setDoc(chatRef, { lastMessage: lastMessageText, lastMessageAt: serverTimestamp(), members: [user.uid, peerId] }, { merge: true });
+        await setDoc(chatRef, { 
+          lastMessage: lastMessageText, 
+          lastMessageAt: serverTimestamp(), 
+          members: [user.uid, peerId] 
+        }, { merge: true });
     } catch (error) {
-        console.error("Error sending message:", error);
+        console.error("Send Message Error:", error);
         toast({ variant: 'destructive', title: 'Error', description: 'Could not send message.' });
     }
   }, [user, chatId, peerId, toast]);
@@ -208,13 +203,12 @@ export default function ChatPage() {
     const reader = new FileReader();
     reader.onload = (event) => {
         if (!event.target?.result) return;
-        const img = document.createElement('img');
+        const img = new (window.Image)();
         img.onload = async () => {
             const canvas = document.createElement('canvas');
-            const MAX_WIDTH = 800; // Compress image for chat
+            const MAX_WIDTH = 800;
             let width = img.width;
             let height = img.height;
-
             if (width > MAX_WIDTH) {
                 height = (height * MAX_WIDTH) / width;
                 width = MAX_WIDTH;
@@ -230,7 +224,7 @@ export default function ChatPage() {
         img.src = event.target.result as string;
     };
     reader.readAsDataURL(file);
-    if(photoInputRef.current) photoInputRef.current.value = ''; // Reset input
+    if(photoInputRef.current) photoInputRef.current.value = '';
   };
 
   const handleDeleteForMe = async (messageId: string) => {
@@ -240,10 +234,9 @@ export default function ChatPage() {
         await updateDoc(messageRef, {
             deletedFor: arrayUnion(user.uid)
         });
-        toast({ title: 'Message deleted for you.' });
+        toast({ title: 'Message hidden for you.' });
     } catch (error) {
-        console.error("Error deleting for me:", error);
-        toast({ variant: 'destructive', title: 'Error', description: 'Could not delete message.' });
+        toast({ variant: 'destructive', title: 'Error', description: 'Could not hide message.' });
     }
   };
 
@@ -263,24 +256,21 @@ export default function ChatPage() {
       });
       toast({ title: 'Message deleted for everyone.' });
     } catch (error: any) {
-      console.error("Error deleting for everyone:", error);
-      toast({ variant: 'destructive', title: 'Error', description: `Could not delete message. ${error.message}`});
+      toast({ variant: 'destructive', title: 'Error', description: 'Could not delete message.'});
     }
   };
-
-  const getInitials = (name: string) => (name || '').substring(0, 2).toUpperCase();
 
   if (loading) {
     return (
       <div className="flex h-full flex-col p-4">
         <Skeleton className="h-12 w-1/3 mb-4" />
-        <div className="flex-grow space-y-4"><Skeleton className="h-10 w-2/3 self-start rounded-lg" /><Skeleton className="h-10 w-1/2 self-end rounded-lg" /><Skeleton className="h-16 w-3/4 self-start rounded-lg" /></div>
+        <div className="flex-grow space-y-4"><Skeleton className="h-10 w-2/3" /><Skeleton className="h-10 w-1/2 self-end" /><Skeleton className="h-16 w-3/4" /></div>
         <Skeleton className="h-10 w-full mt-4" />
       </div>
     );
   }
   
-  if (!isFriend && !loading) return null;
+  if (!isFriend) return null;
 
   return (
     <div className="flex h-full max-h-[calc(100vh-4rem)] flex-col bg-background">
@@ -303,17 +293,15 @@ export default function ChatPage() {
             {msg.senderId === user?.uid && (
               <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <MoreVertical className="h-4 w-4" />
-                      </Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"><MoreVertical className="h-4 w-4" /></Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent>
                       <DropdownMenuItem onClick={() => handleDeleteForMe(msg.id)}><Trash2 className="mr-2 h-4 w-4"/>Delete for me</DropdownMenuItem>
-                      {msg.senderId === user.uid && <DropdownMenuItem onClick={() => handleDeleteForEveryone(msg)} className="text-destructive focus:text-destructive"><Trash2 className="mr-2 h-4 w-4"/>Delete for everyone</DropdownMenuItem>}
+                      <DropdownMenuItem onClick={() => handleDeleteForEveryone(msg)} className="text-destructive focus:text-destructive"><Trash2 className="mr-2 h-4 w-4"/>Delete for everyone</DropdownMenuItem>
                   </DropdownMenuContent>
               </DropdownMenu>
             )}
-            <div className={cn("max-w-xs md:max-w-md rounded-lg", msg.imageUrl ? 'p-0' : 'px-4 py-2', msg.senderId === user?.uid ? 'bg-primary text-primary-foreground' : 'bg-muted' )}>
+            <div className={cn("max-w-xs md:max-w-md rounded-lg", msg.imageUrl ? 'p-0' : 'px-4 py-2', msg.senderId === user?.uid ? 'bg-primary text-primary-foreground' : 'bg-muted')}>
               {msg.deletedForEveryone ? (
                 <p className="text-sm italic text-muted-foreground">This message was deleted</p>
               ) : (
@@ -328,9 +316,7 @@ export default function ChatPage() {
             {msg.senderId !== user?.uid && (
               <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <MoreVertical className="h-4 w-4" />
-                      </Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"><MoreVertical className="h-4 w-4" /></Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent>
                       <DropdownMenuItem onClick={() => handleDeleteForMe(msg.id)}><Trash2 className="mr-2 h-4 w-4"/>Delete for me</DropdownMenuItem>
@@ -348,8 +334,8 @@ export default function ChatPage() {
                 <PopoverTrigger asChild><Button type="button" variant="ghost" size="icon"><Paperclip /></Button></PopoverTrigger>
                 <PopoverContent className="w-auto p-2">
                     <div className="flex flex-col gap-2">
-                        <Button variant="ghost" className="justify-start" onClick={() => { photoInputRef.current?.click(); setIsPopoverOpen(false); }}> <ImageIcon className="mr-2 h-4 w-4" /> Share Photo </Button>
-                        <Button variant="ghost" className="justify-start" onClick={() => { setIsItemDialogOpen(true); setIsPopoverOpen(false); }}> <Package className="mr-2 h-4 w-4" /> Share Item </Button>
+                        <Button variant="ghost" className="justify-start" onClick={() => { photoInputRef.current?.click(); setIsPopoverOpen(false); }}><ImageIcon className="mr-2 h-4 w-4" /> Share Photo</Button>
+                        <Button variant="ghost" className="justify-start" onClick={() => { setIsItemDialogOpen(true); setIsPopoverOpen(false); }}><Package className="mr-2 h-4 w-4" /> Share Item</Button>
                     </div>
                 </PopoverContent>
             </Popover>
