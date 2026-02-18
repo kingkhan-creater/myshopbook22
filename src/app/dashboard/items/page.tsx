@@ -20,6 +20,7 @@ import {
   where,
   limit,
   runTransaction,
+  setDoc,
 } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import {
@@ -53,19 +54,17 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { PlusCircle, Pencil, Loader2, UserPlus, Camera, Package } from 'lucide-react';
+import { PlusCircle, Pencil, Loader2, UserPlus, Camera, Package, Trash2 } from 'lucide-react';
 import type { Item, Customer } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Trash2 } from 'lucide-react';
-
 
 const itemSchema = z.object({
   name: z.string().min(2, { message: 'Item name is required.' }),
-  purchasePrice: z.coerce.number().min(0, { message: 'Purchase price must be a positive number.' }),
-  salePrice: z.coerce.number().min(0, { message: 'Sale price must be a positive number.' }),
-  stockQty: z.coerce.number().int().min(0, { message: 'Stock quantity must be a whole number.' }),
+  purchasePrice: z.coerce.number().min(0),
+  salePrice: z.coerce.number().min(0),
+  stockQty: z.coerce.number().int().min(0),
 });
 type ItemFormValues = z.infer<typeof itemSchema>;
 
@@ -93,14 +92,12 @@ export default function ItemsPage() {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Dialog states
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [isSellDialogOpen, setIsSellDialogOpen] = useState(false);
   const [isAddCustomerDialogOpen, setIsAddCustomerDialogOpen] = useState(false);
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
   
-  // Sell dialog specific states
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loadingCustomers, setLoadingCustomers] = useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
@@ -110,39 +107,24 @@ export default function ItemsPage() {
 
   const form = useForm<ItemFormValues>({ 
     resolver: zodResolver(itemSchema),
-    defaultValues: {
-        name: '',
-        purchasePrice: 0,
-        salePrice: 0,
-        stockQty: 0
-    } 
+    defaultValues: { name: '', purchasePrice: 0, salePrice: 0, stockQty: 0 } 
   });
+  
   const addCustomerForm = useForm<CustomerFormValues>({ 
     resolver: zodResolver(customerSchema),
-    defaultValues: {
-      name: '',
-      phone: '',
-      address: '',
-    }
+    defaultValues: { name: '', phone: '', address: '' }
   });
 
-  // Fetch Items in real-time
   useEffect(() => {
     if (!user) { setLoading(false); return; }
     const itemsQuery = query(collection(db, 'users', user.uid, 'items'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(itemsQuery, (snapshot) => {
-        const itemsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Item));
-        setItems(itemsData);
-        setLoading(false);
-    }, (error) => {
-        console.error("Error fetching items:", error);
-        toast({ variant: "destructive", title: "Error", description: "Could not fetch your items." });
+        setItems(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Item)));
         setLoading(false);
     });
     return () => unsubscribe();
-  }, [user, toast]);
+  }, [user]);
 
-  // Fetch Customers when Sell Dialog opens
   useEffect(() => {
     if (isSellDialogOpen && user) {
         setLoadingCustomers(true);
@@ -155,14 +137,11 @@ export default function ItemsPage() {
     }
   }, [isSellDialogOpen, user]);
   
-  // Memoized and sorted item list for owner view
   const displayedItems = useMemo(() => {
     return [...items].sort((a, b) => {
         if (a.stockQty > 0 && b.stockQty === 0) return -1;
         if (a.stockQty === 0 && b.stockQty > 0) return 1;
-        const timeA = a.createdAt?.toMillis() ?? 0;
-        const timeB = b.createdAt?.toMillis() ?? 0;
-        return timeB - timeA;
+        return (b.createdAt?.toMillis() ?? 0) - (a.createdAt?.toMillis() ?? 0);
     });
   }, [items]);
 
@@ -181,31 +160,22 @@ export default function ItemsPage() {
   const handlePhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = (e) => {
-        if (!e.target?.result) return;
         const img = document.createElement('img');
         img.onload = () => {
             const canvas = document.createElement('canvas');
             const MAX_WIDTH = 512;
-            let width = img.width;
-            let height = img.height;
-
-            if (width > MAX_WIDTH) {
-                height = (height * MAX_WIDTH) / width;
-                width = MAX_WIDTH;
-            }
-
-            canvas.width = width;
-            canvas.height = height;
+            let { width, height } = img;
+            if (width > MAX_WIDTH) { height = (height * MAX_WIDTH) / width; width = MAX_WIDTH; }
+            canvas.width = width; canvas.height = height;
             const ctx = canvas.getContext('2d');
-            if (!ctx) return;
-            ctx.drawImage(img, 0, 0, width, height);
-            const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-            setPhotoBase64(dataUrl);
+            if (ctx) {
+                ctx.drawImage(img, 0, 0, width, height);
+                setPhotoBase64(canvas.toDataURL('image/jpeg', 0.8));
+            }
         };
-        img.src = e.target.result as string;
+        img.src = e.target?.result as string;
     };
     reader.readAsDataURL(file);
   };
@@ -214,28 +184,15 @@ export default function ItemsPage() {
     if (!user || !editingItem) return;
     try {
         const itemDoc = doc(db, 'users', user.uid, 'items', editingItem.id);
-        const dataToUpdate: any = { ...values };
-        if (photoBase64) {
-          dataToUpdate.photoBase64 = photoBase64;
-        }
+        const dataToUpdate = { ...values, photoBase64: photoBase64 || null };
         await updateDoc(itemDoc, dataToUpdate);
-        toast({ title: "Item Updated", description: "Your item has been successfully updated." });
+        toast({ title: "Item Updated" });
         setIsFormOpen(false);
-        setEditingItem(null);
-        setPhotoBase64(null);
     } catch(error) {
-        toast({ variant: "destructive", title: "Error", description: `Could not save the item.` });
+        toast({ variant: "destructive", title: "Error" });
     }
   };
 
-  const openSellDialog = () => {
-    setSelectedCustomerId('');
-    setSaleItems([]);
-    setPaymentGiven(0);
-    setIsSavingSale(false);
-    setIsSellDialogOpen(true);
-  }
-  
   const handleAddSaleItemRow = () => {
     setSaleItems([...saleItems, { rowId: Date.now().toString(), itemId: '', itemName: '', qty: 1, rate: 0, discount: 0, stock: 0 }]);
   };
@@ -253,7 +210,7 @@ export default function ItemsPage() {
                 }
             }
             if (field === 'qty' && Number(value) > updated.stock) {
-                toast({ variant: 'destructive', title: 'Stock Limit Exceeded', description: `Only ${updated.stock} units available.`});
+                toast({ variant: 'destructive', title: 'Stock Limit', description: `Only ${updated.stock} available.`});
                 updated.qty = updated.stock;
             }
             return updated;
@@ -262,185 +219,94 @@ export default function ItemsPage() {
     }));
   };
 
-  const handleRemoveSaleItemRow = (rowId: string) => setSaleItems(saleItems.filter(item => item.rowId !== rowId));
-
   const saleSummary = useMemo(() => {
-    const itemsTotal = saleItems.reduce((sum, item) => sum + (Number(item.qty) || 0) * (Number(item.rate) || 0) - (Number(item.discount) || 0), 0);
-    return { itemsTotal, remaining: itemsTotal - (Number(paymentGiven) || 0) };
+    const itemsTotal = saleItems.reduce((sum, item) => sum + (Number(item.qty) * Number(item.rate)) - Number(item.discount), 0);
+    return { itemsTotal, remaining: itemsTotal - Number(paymentGiven) };
   }, [saleItems, paymentGiven]);
 
-  const handleSaveCustomer = async (values: CustomerFormValues) => {
-    if (!user) return;
-    addCustomerForm.control.disabled = true;
-    try {
-        const newCustomerRef = await addDoc(collection(db, 'users', user.uid, 'customers'), {
-            ...values, totalCredit: 0, totalPaid: 0, createdAt: serverTimestamp(),
-        });
-        toast({ title: "Customer Added" });
-        setSelectedCustomerId(newCustomerRef.id);
-        setIsAddCustomerDialogOpen(false);
-        addCustomerForm.reset();
-    } catch(e) {
-        toast({ variant: 'destructive', title: 'Error', description: 'Could not add customer.' });
-    } finally {
-        addCustomerForm.control.disabled = false;
-    }
-  }
-
   const handleSaveSale = async () => {
-    if (!user || !selectedCustomerId || saleItems.length === 0 || saleItems.some(i => !i.itemId || i.qty <= 0)) {
-        toast({ variant: 'destructive', title: 'Validation Error', description: 'Please select a customer and add valid items with a quantity greater than 0.'});
+    if (!user || !selectedCustomerId || saleItems.length === 0) {
+        toast({ variant: 'destructive', title: "Validation Error" });
         return;
     }
     setIsSavingSale(true);
-    
-    const userBillsRef = collection(db, 'users', user.uid, 'bills');
-    const openBillQuery = query(userBillsRef, where('customerId', '==', selectedCustomerId), where('status', '==', 'OPEN'), limit(1));
-
     try {
+        const userBillsRef = collection(db, 'users', user.uid, 'bills');
+        const openBillQuery = query(userBillsRef, where('customerId', '==', selectedCustomerId), where('status', '==', 'OPEN'), limit(1));
         const openBillSnapshot = await getDocs(openBillQuery);
-        let billRef: any;
-
-        if (openBillSnapshot.empty) {
-            billRef = doc(userBillsRef); 
-        } else {
-            billRef = openBillSnapshot.docs[0].ref;
-        }
+        
+        let billRef = openBillSnapshot.empty ? doc(userBillsRef) : openBillSnapshot.docs[0].ref;
 
         await runTransaction(db, async (transaction) => {
             const customerRef = doc(db, 'users', user.uid, 'customers', selectedCustomerId);
-            const itemRefs = saleItems.map(item => doc(db, 'users', user.uid, 'items', item.itemId));
-            
-            const [billSnap, customerSnap, ...itemSnaps] = await Promise.all([
-                transaction.get(billRef),
-                transaction.get(customerRef),
-                ...itemRefs.map(ref => transaction.get(ref))
-            ]);
-
+            const customerSnap = await transaction.get(customerRef);
             if (!customerSnap.exists()) throw new Error("Customer not found.");
-            for (let i = 0; i < saleItems.length; i++) {
-                const itemSnap = itemSnaps[i];
-                if (!itemSnap.exists() || itemSnap.data().stockQty < saleItems[i].qty) {
-                    throw new Error(`Not enough stock for ${saleItems[i].itemName}.`);
-                }
-            }
 
-            let newItemsTotalForThisSale = 0;
-            const billItemsToAdd = saleItems.map(item => {
-                const total = (item.qty * item.rate) - (item.discount || 0);
-                newItemsTotalForThisSale += total;
-                return {
-                    itemId: item.itemId,
-                    itemName: item.itemName,
-                    qty: item.qty,
-                    rate: item.rate,
-                    discount: item.discount || 0,
-                    total: total,
-                };
+            let newSaleTotal = 0;
+            const itemsToAdd = saleItems.map(item => {
+                const total = (item.qty * item.rate) - item.discount;
+                newSaleTotal += total;
+                return { ...item, total };
             });
-            const paymentAmount = paymentGiven || 0;
 
+            const billSnap = await transaction.get(billRef);
             if (!billSnap.exists()) {
                 const customerData = customerSnap.data() as Customer;
-                const previousBalance = (customerData.totalCredit || 0) - (customerData.totalPaid || 0);
+                const prevBal = (customerData.totalCredit || 0) - (customerData.totalPaid || 0);
                 transaction.set(billRef, {
                     id: billRef.id,
                     customerId: selectedCustomerId,
                     billNumber: Date.now().toString().slice(-6),
                     status: 'OPEN',
-                    previousBalance: previousBalance,
-                    itemsTotal: newItemsTotalForThisSale,
-                    totalPaid: paymentAmount,
-                    grandTotal: previousBalance + newItemsTotalForThisSale,
-                    remaining: (previousBalance + newItemsTotalForThisSale) - paymentAmount,
+                    previousBalance: prevBal,
+                    itemsTotal: newSaleTotal,
+                    totalPaid: paymentGiven,
+                    grandTotal: prevBal + newSaleTotal,
+                    remaining: (prevBal + newSaleTotal) - paymentGiven,
                     createdAt: serverTimestamp(),
                     updatedAt: serverTimestamp(),
                 });
             } else {
                 transaction.update(billRef, {
-                    itemsTotal: increment(newItemsTotalForThisSale),
-                    totalPaid: increment(paymentAmount),
-                    grandTotal: increment(newItemsTotalForThisSale),
-                    remaining: increment(newItemsTotalForThisSale - paymentAmount),
+                    itemsTotal: increment(newSaleTotal),
+                    totalPaid: increment(paymentGiven),
+                    grandTotal: increment(newSaleTotal),
+                    remaining: increment(newSaleTotal - paymentGiven),
                     updatedAt: serverTimestamp(),
                 });
             }
 
-            for (let i = 0; i < saleItems.length; i++) {
-                transaction.update(itemRefs[i], { stockQty: increment(-saleItems[i].qty) });
-            }
-
-            const itemsSubcollectionRef = collection(billRef, 'items');
-            for(const billItem of billItemsToAdd) {
-                const newItemRef = doc(itemsSubcollectionRef);
-                transaction.set(newItemRef, billItem);
-            }
-            
-            if (paymentAmount > 0) {
-                const paymentsSubcollectionRef = collection(billRef, 'payments');
-                const newPaymentRef = doc(paymentsSubcollectionRef);
-                transaction.set(newPaymentRef, {
-                    amount: paymentAmount,
-                    method: 'Cash', 
-                    createdAt: serverTimestamp(),
+            for (const item of saleItems) {
+                transaction.update(doc(db, 'users', user.uid, 'items', item.itemId), { stockQty: increment(-item.qty) });
+                const itemDocRef = doc(collection(billRef, 'items'));
+                transaction.set(itemDocRef, {
+                    itemId: item.itemId,
+                    itemName: item.itemName,
+                    qty: item.qty,
+                    rate: item.rate,
+                    total: (item.qty * item.rate) - item.discount,
                 });
             }
             
+            if (paymentGiven > 0) {
+                const payDocRef = doc(collection(billRef, 'payments'));
+                transaction.set(payDocRef, { amount: paymentGiven, method: 'Cash', createdAt: serverTimestamp() });
+            }
+            
             transaction.update(customerRef, {
-                totalCredit: increment(newItemsTotalForThisSale),
-                totalPaid: increment(paymentAmount)
+                totalCredit: increment(newSaleTotal),
+                totalPaid: increment(paymentGiven)
             });
         });
         
-        toast({ title: "Sale Saved!", description: "The bill has been updated." });
+        toast({ title: "Sale Saved!" });
         setIsSellDialogOpen(false);
     } catch (e: any) {
-        console.error("Transaction Failed:", e);
-        toast({ variant: 'destructive', title: "Transaction Failed", description: e.message || "Could not save sale." });
+        toast({ variant: 'destructive', title: "Error", description: e.message });
     } finally {
         setIsSavingSale(false);
     }
   }
-  
-  const ItemCard = ({ item }: { item: Item }) => (
-    <Card className="flex flex-col">
-        <CardContent className="p-4 flex-grow">
-            {item.photoBase64 ? (
-                <div className="relative w-full h-32 mb-4 rounded-md overflow-hidden">
-                    <Image src={item.photoBase64} alt={item.name} layout="fill" objectFit="cover" />
-                </div>
-            ) : (
-              <div className="relative w-full h-32 mb-4 rounded-md overflow-hidden bg-muted flex items-center justify-center">
-                <Package className="h-12 w-12 text-muted-foreground" />
-              </div>
-            )}
-            <h3 className="font-semibold text-lg line-clamp-1">{item.name}</h3>
-            <div className="text-sm text-muted-foreground mt-1">
-                <p>Available Stock: <span className="font-bold text-foreground">{item.stockQty}</span></p>
-            </div>
-             <div className="mt-2 pt-2 border-t space-y-1">
-                <div className="flex justify-between items-center">
-                    <span className="text-xs text-muted-foreground font-semibold uppercase">Selling Price</span>
-                    <p className="text-lg font-bold text-primary">${item.salePrice.toFixed(2)}</p>
-                </div>
-                <div className="flex justify-between items-center opacity-70">
-                    <span className="text-xs text-muted-foreground uppercase">Purchase Cost</span>
-                    <p className="text-sm font-semibold">${item.purchasePrice.toFixed(2)}</p>
-                </div>
-            </div>
-        </CardContent>
-        <CardFooter className="p-2 border-t">
-            <div className="w-full flex gap-2">
-                <Button variant="ghost" size="sm" className="flex-1" onClick={() => handleEditItem(item)}>
-                    <Pencil className="mr-2 h-4 w-4" /> Edit
-                </Button>
-                <Button variant="secondary" size="sm" className="flex-1" onClick={openSellDialog}>
-                    <PlusCircle className="mr-2 h-4 w-4" /> Sell
-                </Button>
-            </div>
-        </CardFooter>
-    </Card>
-  );
 
   return (
     <div className="container mx-auto p-4 sm:p-6 lg:p-8">
@@ -459,13 +325,44 @@ export default function ItemsPage() {
         </div>
       ) : displayedItems.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-          {displayedItems.map((item) => <ItemCard key={item.id} item={item} />)}
+          {displayedItems.map((item) => (
+            <Card key={item.id} className="flex flex-col overflow-hidden">
+                <CardContent className="p-4 flex-grow">
+                    {item.photoBase64 ? (
+                        <div className="relative w-full h-32 mb-4 rounded-md overflow-hidden">
+                            <Image src={item.photoBase64} alt={item.name} fill className="object-cover" />
+                        </div>
+                    ) : (
+                      <div className="relative w-full h-32 mb-4 rounded-md bg-muted flex items-center justify-center">
+                        <Package className="h-12 w-12 text-muted-foreground" />
+                      </div>
+                    )}
+                    <h3 className="font-semibold text-lg line-clamp-1">{item.name}</h3>
+                    <p className="text-sm text-muted-foreground mt-1">Stock: <span className="font-bold text-foreground">{item.stockQty}</span></p>
+                    <div className="mt-2 pt-2 border-t space-y-1">
+                        <div className="flex justify-between items-center">
+                            <span className="text-xs text-muted-foreground font-semibold uppercase">Sale Price</span>
+                            <p className="text-lg font-bold text-primary">${item.salePrice.toFixed(2)}</p>
+                        </div>
+                        <div className="flex justify-between items-center opacity-70">
+                            <span className="text-xs text-muted-foreground uppercase">Cost Price</span>
+                            <p className="text-sm font-semibold">${item.purchasePrice.toFixed(2)}</p>
+                        </div>
+                    </div>
+                </CardContent>
+                <CardFooter className="p-2 border-t flex gap-2">
+                    <Button variant="ghost" size="sm" className="flex-1" onClick={() => handleEditItem(item)}><Pencil className="mr-2 h-4 w-4" /> Edit</Button>
+                    <Button variant="secondary" size="sm" className="flex-1" onClick={() => { setSaleItems([]); setPaymentGiven(0); setSelectedCustomerId(''); setIsSellDialogOpen(true); }}><PlusCircle className="mr-2 h-4 w-4" /> Sell</Button>
+                </CardFooter>
+            </Card>
+          ))}
         </div>
       ) : (
-        <Card className="col-span-full flex items-center justify-center h-64 border-dashed">
-          <CardContent className="text-center">
+        <Card className="flex flex-col items-center justify-center h-64 border-dashed">
+          <CardContent className="text-center p-6">
+            <Package className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
             <p className="text-lg font-semibold">No items in inventory.</p>
-            <p className="text-muted-foreground">Use the "Add/Purchase Items" page to add stock.</p>
+            <p className="text-muted-foreground">Add stock to get started.</p>
           </CardContent>
         </Card>
       )}
@@ -473,24 +370,26 @@ export default function ItemsPage() {
       {/* Edit Item Dialog */}
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
             <DialogContent className="max-h-[90vh] overflow-y-auto">
-                <DialogHeader><DialogTitle>Edit Item</DialogTitle><DialogDescription>Update the details for this item.</DialogDescription></DialogHeader>
+                <DialogHeader><DialogTitle>Edit Item</DialogTitle></DialogHeader>
                 <Form {...form}>
                     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                        <FormField control={form.control} name="name" render={({ field }) => ( <FormItem><FormLabel>Item Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />
-                        <FormField control={form.control} name="purchasePrice" render={({ field }) => ( <FormItem><FormLabel>Purchase Price</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem> )} />
-                        <FormField control={form.control} name="salePrice" render={({ field }) => ( <FormItem><FormLabel>Sale Price</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem> )} />
-                        <FormField control={form.control} name="stockQty" render={({ field }) => ( <FormItem><FormLabel>Stock Quantity</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem> )} />
+                        <FormField control={form.control} name="name" render={({ field }) => ( <FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />
+                        <div className="grid grid-cols-2 gap-4">
+                            <FormField control={form.control} name="purchasePrice" render={({ field }) => ( <FormItem><FormLabel>Cost</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem> )} />
+                            <FormField control={form.control} name="salePrice" render={({ field }) => ( <FormItem><FormLabel>Sale</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem> )} />
+                        </div>
+                        <FormField control={form.control} name="stockQty" render={({ field }) => ( <FormItem><FormLabel>Stock</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem> )} />
                         <FormItem>
-                            <FormLabel>Item Photo</FormLabel>
+                            <FormLabel>Photo</FormLabel>
                             <FormControl>
                                 <div className="relative">
                                   <Camera className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                   <Input type="file" accept="image/*" onChange={handlePhotoChange} className="pl-10" />
                                 </div>
                             </FormControl>
-                            {photoBase64 && <div className="mt-2"><Image src={photoBase64} alt="Preview" width={80} height={80} className="rounded-md"/></div>}
+                            {photoBase64 && <Image src={photoBase64} alt="Preview" width={80} height={80} className="mt-2 rounded-md border"/>}
                         </FormItem>
-                        <DialogFooter><DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose><Button type="submit">Save Changes</Button></DialogFooter>
+                        <DialogFooter><DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose><Button type="submit">Save</Button></DialogFooter>
                     </form>
                 </Form>
             </DialogContent>
@@ -499,76 +398,52 @@ export default function ItemsPage() {
       {/* Sell Item Dialog */}
       <Dialog open={isSellDialogOpen} onOpenChange={setIsSellDialogOpen}>
             <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader><DialogTitle>Create Sale Bill</DialogTitle><DialogDescription>Select a customer and add items to sell.</DialogDescription></DialogHeader>
+                <DialogHeader><DialogTitle>Create Sale Bill</DialogTitle></DialogHeader>
                 <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 py-4">
                     <div className="lg:col-span-2 space-y-4">
                         <Card><CardHeader className="p-4"><CardTitle className="text-lg">Customer</CardTitle></CardHeader>
                             <CardContent className="p-4 pt-0">
-                                {loadingCustomers ? <p>Loading...</p> : (
-                                    <div className="flex items-center gap-2">
-                                        <Select value={selectedCustomerId} onValueChange={setSelectedCustomerId}><SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger><SelectContent>{customers.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select>
-                                        <Dialog open={isAddCustomerDialogOpen} onOpenChange={setIsAddCustomerDialogOpen}><DialogTrigger asChild><Button variant="outline" size="icon"><UserPlus/></Button></DialogTrigger>
-                                            <DialogContent>
-                                                <DialogHeader><DialogTitle>Add New Customer</DialogTitle></DialogHeader>
-                                                <Form {...addCustomerForm}><form onSubmit={addCustomerForm.handleSubmit(handleSaveCustomer)} className="space-y-4">
-                                                    <FormField control={addCustomerForm.control} name="name" render={({field}) => ( <FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )}/>
-                                                    <FormField control={addCustomerForm.control} name="phone" render={({field}) => ( <FormItem><FormLabel>Phone</FormLabel><FormControl><Input {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem> )}/>
-                                                    <FormField control={addCustomerForm.control} name="address" render={({field}) => ( <FormItem><FormLabel>Address</FormLabel><FormControl><Input {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem> )}/>
-                                                    <DialogFooter><DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose><Button type="submit" disabled={addCustomerForm.formState.isSubmitting}>Save</Button></DialogFooter>
-                                                </form></Form>
-                                            </DialogContent>
-                                        </Dialog>
-                                    </div>
-                                )}
+                                <div className="flex items-center gap-2">
+                                    <Select value={selectedCustomerId} onValueChange={setSelectedCustomerId}><SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger><SelectContent>{customers.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select>
+                                    <Button variant="outline" size="icon" onClick={() => setIsAddCustomerDialogOpen(true)}><UserPlus/></Button>
+                                </div>
                             </CardContent>
                         </Card>
                         <Card><CardHeader className="p-4"><CardTitle className="text-lg">Payment</CardTitle></CardHeader>
                             <CardContent className="space-y-4 p-4 pt-0">
                                 <div className="text-center p-4 bg-muted rounded-lg">
-                                    <p className="text-sm text-muted-foreground">Grand Total</p><p className="text-2xl font-bold">${saleSummary.itemsTotal.toFixed(2)}</p>
+                                    <p className="text-sm text-muted-foreground">Total Sale</p><p className="text-2xl font-bold">${saleSummary.itemsTotal.toFixed(2)}</p>
                                 </div>
                                 <div className="space-y-2">
-                                    <Label htmlFor="paymentGiven">Payment Received</Label>
-                                    <Input id="paymentGiven" type="number" value={paymentGiven} onChange={(e) => setPaymentGiven(parseFloat(e.target.value) || 0)} placeholder="0.00"/>
-                                    <p className="text-lg font-semibold">Remaining: <span className="text-destructive">${saleSummary.remaining.toFixed(2)}</span></p>
+                                    <Label>Payment Received</Label>
+                                    <Input type="number" value={paymentGiven} onChange={(e) => setPaymentGiven(parseFloat(e.target.value) || 0)} placeholder="0.00"/>
+                                    <p className="text-lg font-semibold">Balance: <span className="text-destructive">${saleSummary.remaining.toFixed(2)}</span></p>
                                 </div>
                             </CardContent>
                         </Card>
                     </div>
                     <div className="lg:col-span-3">
-                        <Card><CardHeader className="p-4"><CardTitle className="text-lg">Bill Items</CardTitle></CardHeader>
+                        <Card><CardHeader className="p-4"><CardTitle className="text-lg">Items</CardTitle></CardHeader>
                             <CardContent className="p-0 sm:p-4">
-                                <div className="overflow-x-auto">
-                                    <Table><TableHeader><TableRow><TableHead className="min-w-[150px]">Item</TableHead><TableHead className="min-w-[80px]">Qty</TableHead><TableHead className="min-w-[80px]">Rate</TableHead><TableHead className="min-w-[100px]">Subtotal</TableHead><TableHead className="w-[50px]"></TableHead></TableRow></TableHeader>
-                                        <TableBody>
-                                            {saleItems.map(item => (
-                                                <TableRow key={item.rowId}>
-                                                    <TableCell>{item.itemName || (<Select value={item.itemId} onValueChange={(v) => handleSaleItemChange(item.rowId, 'itemId', v)}><SelectTrigger className="h-8"><SelectValue placeholder="Select Item"/></SelectTrigger><SelectContent>{items.filter(i=>i.stockQty > 0).map(i => <SelectItem key={i.id} value={i.id}>{i.name} (Qty: {i.stockQty})</SelectItem>)}</SelectContent></Select>)}</TableCell>
-                                                    <TableCell><Input type="number" value={item.qty} onChange={e => handleSaleItemChange(item.rowId, 'qty', parseInt(e.target.value) || 0)} className="w-16 h-8"/></TableCell>
-                                                    <TableCell><Input type="number" value={item.rate} onChange={e => handleSaleItemChange(item.rowId, 'rate', parseFloat(e.target.value) || 0)} className="w-20 h-8"/></TableCell>
-                                                    <TableCell className="text-sm font-medium">${((item.qty * item.rate) - (item.discount || 0)).toFixed(2)}</TableCell>
-                                                    <TableCell><Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleRemoveSaleItemRow(item.rowId)}><Trash2 className="h-4 w-4 text-destructive"/></Button></TableCell>
-                                                </TableRow>
-                                            ))}
-                                        </TableBody>
-                                    </Table>
-                                </div>
-                                <div className="p-4 border-t">
-                                    <Button onClick={handleAddSaleItemRow} variant="outline" size="sm" className="w-full">
-                                        <PlusCircle className="mr-2 h-4 w-4"/>Add Item
-                                    </Button>
-                                </div>
+                                <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Item</TableHead><TableHead>Qty</TableHead><TableHead>Rate</TableHead><TableHead>Total</TableHead><TableHead></TableHead></TableRow></TableHeader>
+                                    <TableBody>
+                                        {saleItems.map(item => (
+                                            <TableRow key={item.rowId}>
+                                                <TableCell className="min-w-[150px]">{item.itemName || (<Select value={item.itemId} onValueChange={(v) => handleSaleItemChange(item.rowId, 'itemId', v)}><SelectTrigger className="h-8"><SelectValue placeholder="Select"/></SelectTrigger><SelectContent>{items.filter(i=>i.stockQty > 0).map(i => <SelectItem key={i.id} value={i.id}>{i.name} ({i.stockQty})</SelectItem>)}</SelectContent></Select>)}</TableCell>
+                                                <TableCell><Input type="number" value={item.qty} onChange={e => handleSaleItemChange(item.rowId, 'qty', parseInt(e.target.value) || 0)} className="w-16 h-8"/></TableCell>
+                                                <TableCell><Input type="number" value={item.rate} onChange={e => handleSaleItemChange(item.rowId, 'rate', parseFloat(e.target.value) || 0)} className="w-20 h-8"/></TableCell>
+                                                <TableCell className="text-sm font-medium">${((item.qty * item.rate) - item.discount).toFixed(2)}</TableCell>
+                                                <TableCell><Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSaleItems(saleItems.filter(i => i.rowId !== item.rowId))}><Trash2 className="h-4 w-4 text-destructive"/></Button></TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table></div>
+                                <div className="p-4 border-t"><Button onClick={handleAddSaleItemRow} variant="outline" size="sm" className="w-full"><PlusCircle className="mr-2 h-4 w-4"/>Add Row</Button></div>
                             </CardContent>
                         </Card>
                     </div>
                 </div>
-                <DialogFooter className="flex flex-col sm:flex-row gap-2">
-                    <DialogClose asChild><Button variant="outline" className="w-full sm:w-auto">Cancel</Button></DialogClose>
-                    <Button onClick={handleSaveSale} disabled={isSavingSale} className="w-full sm:w-auto">
-                        {isSavingSale && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-                        Confirm Sale
-                    </Button>
-                </DialogFooter>
+                <DialogFooter><DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose><Button onClick={handleSaveSale} disabled={isSavingSale}>{isSavingSale && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Confirm Sale</Button></DialogFooter>
             </DialogContent>
       </Dialog>
     </div>

@@ -69,31 +69,27 @@ export default function PurchasePage() {
   useEffect(() => {
     if (!user) return;
     
-    const fetchInitialData = async () => {
-        setLoading(true);
-        const itemsUnsub = onSnapshot(collection(db, 'users', user.uid, 'items'), snapshot => {
-            setItems(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Item)));
-        });
+    setLoading(true);
+    const itemsUnsub = onSnapshot(collection(db, 'users', user.uid, 'items'), snapshot => {
+        setItems(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Item)));
+    });
 
-        const suppliersUnsub = onSnapshot(collection(db, 'users', user.uid, 'suppliers'), snapshot => {
-            setSuppliers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Supplier)));
-        });
+    const suppliersUnsub = onSnapshot(collection(db, 'users', user.uid, 'suppliers'), snapshot => {
+        setSuppliers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Supplier)));
+    });
 
-        setLoading(false);
-        return () => {
-            itemsUnsub();
-            suppliersUnsub();
-        };
+    setLoading(false);
+    return () => {
+        itemsUnsub();
+        suppliersUnsub();
     };
-
-    fetchInitialData();
   }, [user]);
 
   const addBillRow = () => {
     setBillItems([
       ...billItems,
       {
-        rowId: new Date().getTime().toString(),
+        rowId: Date.now().toString(),
         itemId: '',
         itemName: '',
         qty: 1,
@@ -101,10 +97,6 @@ export default function PurchasePage() {
         sellingPrice: 0,
       },
     ]);
-  };
-
-  const removeBillRow = (rowId: string) => {
-    setBillItems(billItems.filter(item => item.rowId !== rowId));
   };
 
   const handleBillItemChange = <K extends keyof BillItem>(
@@ -138,33 +130,12 @@ export default function PurchasePage() {
     return { totalQty, grandTotal, remaining };
   }, [billItems, paymentGiven]);
 
-  const handleSaveSupplier = async (values: SupplierFormValues) => {
-    if (!user) return;
-    try {
-        const suppliersRef = collection(db, 'users', user.uid, 'suppliers');
-        const newSupplierRef = await addDoc(suppliersRef, {
-            ...values,
-            totalPurchase: 0,
-            totalPaid: 0,
-            createdAt: serverTimestamp(),
-        });
-        setSelectedSupplierId(newSupplierRef.id);
-        toast({ title: "Supplier Added", description: `${values.name} has been added.` });
-        setIsSupplierDialogOpen(false);
-        supplierForm.reset();
-    } catch(e) {
-        console.error(e);
-        toast({ variant: 'destructive', title: 'Error', description: 'Could not add supplier.' });
-    }
-  }
-
   const handleSaveBill = async () => {
     if (!user || !selectedSupplierId || billItems.length === 0) {
-        toast({ variant: 'destructive', title: 'Validation Error', description: 'Please select a supplier and add at least one item.' });
+        toast({ variant: 'destructive', title: 'Error', description: 'Select a supplier and add items.' });
         return;
     }
     setIsSaving(true);
-    
     try {
         const batch = writeBatch(db);
         const userItemsRef = collection(db, 'users', user.uid, 'items');
@@ -190,8 +161,7 @@ export default function PurchasePage() {
             }
         }
         
-        const supplierRef = doc(db, 'users', user.uid, 'suppliers', selectedSupplierId);
-        batch.update(supplierRef, {
+        batch.update(doc(db, 'users', user.uid, 'suppliers', selectedSupplierId), {
             totalPurchase: increment(summary.grandTotal),
             totalPaid: increment(paymentGiven)
         });
@@ -207,185 +177,99 @@ export default function PurchasePage() {
         });
         
         await batch.commit();
-
-        toast({ title: 'Success', description: 'Purchase bill saved successfully.' });
+        toast({ title: 'Bill saved successfully' });
         router.push('/dashboard/items');
-
     } catch (e: any) {
-        console.error(e);
-        toast({ variant: 'destructive', title: 'Error', description: `Could not save bill: ${e.message}` });
+        toast({ variant: 'destructive', title: 'Error', description: e.message });
     } finally {
         setIsSaving(false);
     }
   };
 
-
   return (
     <div className="container mx-auto p-2 sm:p-6 lg:p-8">
-      <Card className="border-none sm:border shadow-none sm:shadow-sm">
-        <CardHeader className="px-4 py-4 sm:p-6">
+      <Card className="border-none sm:border shadow-none">
+        <CardHeader className="px-4 py-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3 sm:gap-4">
-               <Button variant="outline" size="icon" asChild className="h-8 w-8 sm:h-10 sm:w-10">
-                <Link href="/dashboard/items"><ArrowLeft className="h-4 w-4 sm:h-5 sm:w-5" /></Link>
-               </Button>
+            <div className="flex items-center gap-3">
+               <Button variant="outline" size="icon" asChild><Link href="/dashboard/items"><ArrowLeft/></Link></Button>
                <div>
-                <CardTitle className="text-xl sm:text-3xl font-bold tracking-tight">New Purchase Bill</CardTitle>
-                <CardDescription className="text-xs sm:text-sm">Add items to inventory from a supplier.</CardDescription>
+                <CardTitle className="text-xl sm:text-3xl font-bold">New Purchase Bill</CardTitle>
+                <CardDescription>Restock your inventory from suppliers.</CardDescription>
                </div>
             </div>
             <Button onClick={handleSaveBill} disabled={isSaving} className="w-full sm:w-auto h-10">
-              {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Save Bill
+              {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Bill
             </Button>
           </div>
         </CardHeader>
-        <CardContent className="space-y-4 sm:space-y-6 px-2 sm:px-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+        <CardContent className="space-y-6 px-2 sm:px-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <Card>
-                    <CardHeader className="p-4">
-                        <CardTitle className="text-base sm:text-lg">Supplier Details</CardTitle>
-                    </CardHeader>
+                    <CardHeader className="p-4"><CardTitle className="text-lg">Supplier</CardTitle></CardHeader>
                     <CardContent className="p-4 pt-0">
-                    {loading ? <div className="h-10 w-full bg-muted animate-pulse rounded" /> : (
                          <div className="flex items-center gap-2">
                              <Select value={selectedSupplierId} onValueChange={setSelectedSupplierId}>
-                                <SelectTrigger className="h-10">
-                                    <SelectValue placeholder="Select a supplier" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                                </SelectContent>
+                                <SelectTrigger><SelectValue placeholder="Select supplier"/></SelectTrigger>
+                                <SelectContent>{suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
                             </Select>
                              <Dialog open={isSupplierDialogOpen} onOpenChange={setIsSupplierDialogOpen}>
-                                <DialogTrigger asChild>
-                                    <Button variant="outline" size="icon" className="h-10 w-10 shrink-0"><UserPlus className="h-4 w-4"/></Button>
-                                </DialogTrigger>
-                                <DialogContent className="sm:max-w-[425px]">
-                                    <DialogHeader>
-                                        <DialogTitle>Add New Supplier</DialogTitle>
-                                        <DialogDescription>Enter the details for the new supplier.</DialogDescription>
-                                    </DialogHeader>
+                                <DialogTrigger asChild><Button variant="outline" size="icon"><UserPlus/></Button></DialogTrigger>
+                                <DialogContent>
+                                    <DialogHeader><DialogTitle>Add Supplier</DialogTitle></DialogHeader>
                                     <Form {...supplierForm}>
-                                        <form onSubmit={supplierForm.handleSubmit(handleSaveSupplier)} className="space-y-4">
-                                            <FormField control={supplierForm.control} name="name" render={({field}) => (
-                                                <FormItem><FormLabel>Supplier Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
-                                            )} />
-                                            <FormField control={supplierForm.control} name="phone" render={({field}) => (
-                                                <FormItem><FormLabel>Phone (Optional)</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
-                                            )} />
-                                            <FormField control={supplierForm.control} name="address" render={({field}) => (
-                                                <FormItem><FormLabel>Address (Optional)</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
-                                            )} />
-                                            <DialogFooter>
-                                                <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
-                                                <Button type="submit">Save Supplier</Button>
-                                            </DialogFooter>
+                                        <form onSubmit={supplierForm.handleSubmit(async (v) => {
+                                            const ref = await addDoc(collection(db, 'users', user!.uid, 'suppliers'), { ...v, totalPurchase: 0, totalPaid: 0, createdAt: serverTimestamp() });
+                                            setSelectedSupplierId(ref.id); setIsSupplierDialogOpen(false); supplierForm.reset();
+                                        })} className="space-y-4">
+                                            <FormField control={supplierForm.control} name="name" render={({field}) => ( <FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />
+                                            <FormField control={supplierForm.control} name="phone" render={({field}) => ( <FormItem><FormLabel>Phone</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />
+                                            <DialogFooter><Button type="submit">Save</Button></DialogFooter>
                                         </form>
                                     </Form>
                                 </DialogContent>
                              </Dialog>
                          </div>
-                    )}
                     </CardContent>
                 </Card>
             </div>
 
             <Card>
-                <CardHeader className="p-4">
-                    <CardTitle className="text-base sm:text-lg">Bill Items</CardTitle>
-                </CardHeader>
+                <CardHeader className="p-4"><CardTitle className="text-lg">Bill Items</CardTitle></CardHeader>
                 <CardContent className="p-0 sm:p-4">
-                    <div className="overflow-x-auto w-full">
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead className="min-w-[180px] sm:min-w-[200px]">Item</TableHead>
-                                    <TableHead className="min-w-[80px]">Qty</TableHead>
-                                    <TableHead className="min-w-[100px]">Purchase Price</TableHead>
-                                    <TableHead className="min-w-[100px]">Selling Price</TableHead>
-                                    <TableHead className="min-w-[100px]">Subtotal</TableHead>
-                                    <TableHead className="w-[50px]"></TableHead>
+                    <div className="overflow-x-auto"><Table>
+                        <TableHeader><TableRow><TableHead>Item</TableHead><TableHead>Qty</TableHead><TableHead>Cost</TableHead><TableHead>Sale</TableHead><TableHead>Subtotal</TableHead><TableHead></TableHead></TableRow></TableHeader>
+                        <TableBody>
+                            {billItems.map(item => (
+                                <TableRow key={item.rowId}>
+                                    <TableCell className="min-w-[180px]">
+                                        <Select value={item.itemId} onValueChange={(v) => handleBillItemChange(item.rowId, 'itemId', v)}>
+                                            <SelectTrigger><SelectValue placeholder="Select"/></SelectTrigger>
+                                            <SelectContent><SelectItem value="new">-- New Item --</SelectItem>{items.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent>
+                                        </Select>
+                                        {item.itemId === 'new' && <Input placeholder="Item name" className="mt-2 h-8" value={item.itemName} onChange={(e) => handleBillItemChange(item.rowId, 'itemName', e.target.value)} />}
+                                    </TableCell>
+                                    <TableCell><Input type="number" className="w-16 h-9" value={item.qty} onChange={(e) => handleBillItemChange(item.rowId, 'qty', parseInt(e.target.value) || 0)} /></TableCell>
+                                    <TableCell><Input type="number" className="w-20 h-9" value={item.price} onChange={(e) => handleBillItemChange(item.rowId, 'price', parseFloat(e.target.value) || 0)} /></TableCell>
+                                    <TableCell><Input type="number" className="w-20 h-9" value={item.sellingPrice} onChange={(e) => handleBillItemChange(item.rowId, 'sellingPrice', parseFloat(e.target.value) || 0)} /></TableCell>
+                                    <TableCell className="text-sm font-medium">${(item.qty * item.price).toFixed(2)}</TableCell>
+                                    <TableCell><Button variant="ghost" size="icon" onClick={() => setBillItems(billItems.filter(i => i.rowId !== item.rowId))}><Trash2 className="h-4 w-4 text-destructive"/></Button></TableCell>
                                 </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {billItems.map(item => (
-                                    <TableRow key={item.rowId}>
-                                        <TableCell className="py-2">
-                                            <Select
-                                              value={item.itemId}
-                                              onValueChange={(value) => handleBillItemChange(item.rowId, 'itemId', value)}>
-                                                <SelectTrigger className="h-9">
-                                                    <SelectValue placeholder="Select item" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="new">-- Create New Item --</SelectItem>
-                                                    {items.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}
-                                                </SelectContent>
-                                            </Select>
-                                            {item.itemId === 'new' && (
-                                                <Input 
-                                                    placeholder="Item name"
-                                                    className="mt-2 h-8 text-xs sm:text-sm"
-                                                    value={item.itemName}
-                                                    onChange={(e) => handleBillItemChange(item.rowId, 'itemName', e.target.value)}
-                                                />
-                                            )}
-                                        </TableCell>
-                                        <TableCell className="py-2">
-                                            <Input type="number" className="h-9 w-full min-w-[60px]" value={item.qty} onChange={(e) => handleBillItemChange(item.rowId, 'qty', parseInt(e.target.value) || 0)} />
-                                        </TableCell>
-                                        <TableCell className="py-2">
-                                            <Input type="number" className="h-9 w-full min-w-[80px]" value={item.price} onChange={(e) => handleBillItemChange(item.rowId, 'price', parseFloat(e.target.value) || 0)} />
-                                        </TableCell>
-                                        <TableCell className="py-2">
-                                            <Input type="number" className="h-9 w-full min-w-[80px]" value={item.sellingPrice} onChange={(e) => handleBillItemChange(item.rowId, 'sellingPrice', parseFloat(e.target.value) || 0)} />
-                                        </TableCell>
-                                        <TableCell className="py-2 font-medium text-sm">
-                                            ${(item.qty * item.price).toFixed(2)}
-                                        </TableCell>
-                                        <TableCell className="py-2">
-                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeBillRow(item.rowId)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                    </div>
-                    <div className="p-4 border-t">
-                        <Button onClick={addBillRow} variant="outline" size="sm" className="w-full sm:w-auto">
-                            <PlusCircle className="mr-2 h-4 w-4" /> Add Item
-                        </Button>
-                    </div>
+                            ))}
+                        </TableBody>
+                    </Table></div>
+                    <div className="p-4 border-t"><Button onClick={addBillRow} variant="outline" size="sm" className="w-full sm:w-auto"><PlusCircle className="mr-2 h-4 w-4" /> Add Item</Button></div>
                 </CardContent>
             </Card>
 
              <Card>
-                <CardHeader className="p-4">
-                    <CardTitle className="text-base sm:text-lg">Payment & Summary</CardTitle>
-                </CardHeader>
-                <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 p-4 pt-0">
-                    <div className="text-center p-3 bg-muted rounded-lg flex flex-col justify-center">
-                        <p className="text-[10px] sm:text-xs text-muted-foreground uppercase tracking-wider font-semibold">Total Items</p>
-                        <p className="text-lg sm:text-2xl font-bold">{billItems.length}</p>
-                    </div>
-                    <div className="text-center p-3 bg-muted rounded-lg flex flex-col justify-center">
-                        <p className="text-[10px] sm:text-xs text-muted-foreground uppercase tracking-wider font-semibold">Total Quantity</p>
-                        <p className="text-lg sm:text-2xl font-bold">{summary.totalQty}</p>
-                    </div>
-                    <div className="text-center p-3 bg-primary text-primary-foreground rounded-lg flex flex-col justify-center shadow-sm">
-                        <p className="text-[10px] sm:text-xs opacity-80 uppercase tracking-wider font-semibold">Grand Total</p>
-                        <p className="text-lg sm:text-2xl font-bold">${summary.grandTotal.toFixed(2)}</p>
-                    </div>
+                <CardHeader className="p-4"><CardTitle className="text-lg">Summary</CardTitle></CardHeader>
+                <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-4 pt-0">
+                    <div className="text-center p-3 bg-muted rounded-lg"><p className="text-[10px] uppercase font-bold text-muted-foreground">Grand Total</p><p className="text-2xl font-bold">${summary.grandTotal.toFixed(2)}</p></div>
                     <div className="p-3 rounded-lg border bg-background space-y-2">
-                        <div className="space-y-1">
-                            <Label htmlFor="paymentGiven" className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Payment Given</Label>
-                            <Input id="paymentGiven" type="number" className="h-9" value={paymentGiven} onChange={(e) => setPaymentGiven(parseFloat(e.target.value) || 0)} />
-                        </div>
-                        <div className="flex justify-between items-center pt-1">
-                            <span className="text-xs font-semibold">Remaining:</span>
-                            <span className="text-sm font-bold text-destructive">${summary.remaining.toFixed(2)}</span>
-                        </div>
+                        <Label className="text-[10px] uppercase font-bold text-muted-foreground">Payment Given</Label>
+                        <Input type="number" className="h-9" value={paymentGiven} onChange={(e) => setPaymentGiven(parseFloat(e.target.value) || 0)} />
+                        <div className="flex justify-between items-center pt-1"><span className="text-xs font-semibold">Remaining:</span><span className="text-sm font-bold text-destructive">${summary.remaining.toFixed(2)}</span></div>
                     </div>
                 </CardContent>
             </Card>
