@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef, use } from 'react';
@@ -17,14 +18,14 @@ import {
   getCountFromServer,
   serverTimestamp,
 } from 'firebase/firestore';
-import type { Post, PublicUserProfile } from '@/lib/types';
+import type { Post, PublicUserProfile, PostPrivacy } from '@/lib/types';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Camera, Pencil, MessageSquare, UserPlus, Check, Loader2, ArrowLeft, MoreVertical, UserMinus, Ban, UserX, X } from 'lucide-react';
+import { Camera, Pencil, MessageSquare, UserPlus, Check, Loader2, ArrowLeft, MoreHorizontal, UserMinus, UserX, X } from 'lucide-react';
 import { PostCard } from '@/components/dashboard/post-card';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -65,7 +66,6 @@ export default function UserProfilePage(props: { params: Promise<{ userId: strin
   const [friendsIds, setFriendsIds] = useState<string[]>([]);
   
   const [friendshipStatus, setFriendshipStatus] = useState<'none' | 'pending' | 'accepted' | 'requested' | 'blocked'>('none');
-  const [blockedBy, setBlockedBy] = useState<string | null>(null);
 
   const [isEditingBio, setIsEditingBio] = useState(false);
   const [newBio, setNewBio] = useState('');
@@ -157,7 +157,6 @@ export default function UserProfilePage(props: { params: Promise<{ userId: strin
                     setFriendshipStatus(data.requestedBy === user.uid ? 'pending' : 'requested');
                 } else if (data.status === 'blocked') {
                     setFriendshipStatus('blocked');
-                    setBlockedBy(data.blockedBy);
                 } else {
                     setFriendshipStatus('none');
                 }
@@ -213,11 +212,11 @@ export default function UserProfilePage(props: { params: Promise<{ userId: strin
   };
 
   const handleAddFriend = async () => {
-    if (!user || isMyProfile || !targetProfile) return;
-    const friendshipId = [user.uid, targetProfile.uid].sort().join('_');
+    if (!user || isMyProfile || !userId) return;
+    const friendshipId = [user.uid, userId].sort().join('_');
     try {
         await setDoc(doc(db, 'friendships', friendshipId), {
-            users: [user.uid, targetProfile.uid],
+            users: [user.uid, userId],
             status: 'pending',
             requestedBy: user.uid,
             createdAt: serverTimestamp(),
@@ -229,8 +228,8 @@ export default function UserProfilePage(props: { params: Promise<{ userId: strin
   };
 
   const handleAcceptRequest = async () => {
-    if (!user || !targetProfile) return;
-    const friendshipId = [user.uid, targetProfile.uid].sort().join('_');
+    if (!user || !userId) return;
+    const friendshipId = [user.uid, userId].sort().join('_');
     try {
         await updateDoc(doc(db, 'friendships', friendshipId), { status: 'accepted' });
         toast({ title: 'Friend request accepted!' });
@@ -240,40 +239,24 @@ export default function UserProfilePage(props: { params: Promise<{ userId: strin
   };
 
   const handleUnfriend = async () => {
-    if (!user || !targetProfile) return;
-    if (!window.confirm(`Are you sure you want to unfriend ${targetProfile.fullName}?`)) return;
-    const friendshipId = [user.uid, targetProfile.uid].sort().join('_');
+    if (!user || !userId) return;
+    if (!window.confirm(`Are you sure you want to unfriend this user?`)) return;
+    const friendshipId = [user.uid, userId].sort().join('_');
     try {
         await deleteDoc(doc(db, 'friendships', friendshipId));
         toast({ title: 'Unfriended successfully.' });
     } catch (e) {
-        toast({ variant: 'destructive', title: 'Error' });
-    }
-  };
-
-  const handleBlockUser = async () => {
-    if (!user || !targetProfile) return;
-    if (!window.confirm(`Block ${targetProfile.fullName}? You will no longer see each other's content.`)) return;
-    const friendshipId = [user.uid, targetProfile.uid].sort().join('_');
-    try {
-        await setDoc(doc(db, 'friendships', friendshipId), {
-            users: [user.uid, targetProfile.uid],
-            status: 'blocked',
-            blockedBy: user.uid,
-            createdAt: serverTimestamp(),
-        });
-        toast({ title: 'User blocked.' });
-    } catch (e) {
-        toast({ variant: 'destructive', title: 'Error' });
+        console.error("Unfriend error:", e);
+        toast({ variant: 'destructive', title: 'Error', description: 'Could not unfriend. Please try again.' });
     }
   };
 
   const handleCancelRequest = async () => {
-    if (!user || !targetProfile) return;
-    const friendshipId = [user.uid, targetProfile.uid].sort().join('_');
+    if (!user || !userId) return;
+    const friendshipId = [user.uid, userId].sort().join('_');
     try {
         await deleteDoc(doc(db, 'friendships', friendshipId));
-        toast({ title: 'Request canceled.' });
+        toast({ title: 'Request removed.' });
     } catch (e) {
         toast({ variant: 'destructive', title: 'Error' });
     }
@@ -433,7 +416,7 @@ export default function UserProfilePage(props: { params: Promise<{ userId: strin
                 <div className="relative">
                     <Avatar className="h-32 w-32 md:h-40 md:w-40 border-4 border-background shadow-lg">
                         <AvatarImage src={targetProfile?.photoUrl ?? undefined} />
-                        <AvatarFallback className="text-4xl">{getInitials(targetProfile?.fullName || '')}</AvatarFallback>
+                        <AvatarFallback>{getInitials(targetProfile?.fullName || '')}</AvatarFallback>
                     </Avatar>
                     {isMyProfile && (
                         <>
@@ -476,9 +459,6 @@ export default function UserProfilePage(props: { params: Promise<{ userId: strin
                                         <DropdownMenuContent align="end">
                                             <DropdownMenuItem onClick={handleUnfriend} className="text-destructive">
                                                 <UserMinus className="mr-2 h-4 w-4" /> Unfriend
-                                            </DropdownMenuItem>
-                                            <DropdownMenuItem onClick={handleBlockUser} className="text-destructive">
-                                                <Ban className="mr-2 h-4 w-4" /> Block
                                             </DropdownMenuItem>
                                         </DropdownMenuContent>
                                     </DropdownMenu>
