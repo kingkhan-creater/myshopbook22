@@ -322,20 +322,23 @@ const StoryViewer = ({ open, onOpenChange, userStories }: { open: boolean, onOpe
                                 {userStories.map((story) => (
                                     <CarouselItem key={story.id} className="h-full relative">
                                         <div className="relative w-full h-full flex items-center justify-center">
-                                        <Image 
+                                            <Image 
                                                 src={story.imageUrl} 
                                                 alt={story.text || 'Story'} 
                                                 fill 
                                                 className="object-contain" 
                                                 priority
                                             />
-                                        {story.text && (
-                                                <div className="absolute bottom-32 left-0 right-0 p-6 text-center z-10">
-                                                    <p className="inline-block px-4 py-2 rounded-lg text-white text-base font-medium bg-black/50 backdrop-blur-sm">
-                                                        {story.text}
-                                                    </p>
+                                            {/* Facebook-style Caption at the bottom */}
+                                            {story.text && (
+                                                <div className="absolute bottom-4 left-0 right-0 px-4 py-2 text-center z-10">
+                                                    <div className="bg-black/70 rounded-lg backdrop-blur-sm px-3 py-1 inline-block max-w-[90%]">
+                                                        <p className="text-white text-sm sm:text-base font-medium break-words whitespace-pre-wrap">
+                                                            {story.text}
+                                                        </p>
+                                                    </div>
                                                 </div>
-                                        )}
+                                            )}
                                         </div>
                                     </CarouselItem>
                                 ))}
@@ -352,15 +355,15 @@ const StoryViewer = ({ open, onOpenChange, userStories }: { open: boolean, onOpe
 
                     {/* Footer - Viewer Info for Owner */}
                     {isOwner && currentStory && (
-                        <div className="absolute bottom-0 left-0 right-0 p-6 z-30 flex justify-center bg-gradient-to-t from-black/60 to-transparent">
+                        <div className="absolute bottom-4 left-0 right-0 p-4 z-30 flex justify-center bg-gradient-to-t from-black/80 to-transparent">
                             <Button 
                                 variant="ghost" 
-                                className="text-white hover:bg-white/20 gap-2"
+                                className="text-white hover:bg-white/10 gap-2 h-12 px-6 rounded-full border border-white/10 backdrop-blur-sm"
                                 onClick={() => setIsViewerListOpen(true)}
                             >
                                 <Eye className="h-4 w-4" />
                                 <span className="font-bold">
-                                    {currentStory.viewerIds?.length || 0} {currentStory.viewerIds?.length === 1 ? 'view' : 'views'}
+                                    Seen by {currentStory.viewerIds?.length || 0}
                                 </span>
                             </Button>
                         </div>
@@ -417,7 +420,6 @@ const StoryViewer = ({ open, onOpenChange, userStories }: { open: boolean, onOpe
         </>
     );
 };
-
 
 // --- Main StoriesSection Component ---
 export function StoriesSection() {
