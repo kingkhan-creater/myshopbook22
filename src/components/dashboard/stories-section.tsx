@@ -163,28 +163,27 @@ const StoryViewer = ({ open, onOpenChange, userStories }: { open: boolean, onOpe
         }
     }, [open, api, userStories]);
 
-    // Timer logic for progress bar and auto-advance
+    // Timer logic for progress bar
     useEffect(() => {
         if (!open || !api) return;
 
         const interval = setInterval(() => {
-            setProgress((prev) => {
-                if (prev < 100) {
-                    return prev + 1;
-                } else {
-                    if (api.canScrollNext()) {
-                        api.scrollNext();
-                        return 0;
-                    } else {
-                        onOpenChange(false);
-                        return 100;
-                    }
-                }
-            });
+            setProgress((prev) => (prev < 100 ? prev + 1 : 100));
         }, 50); // 5 seconds total per story (50ms * 100)
 
         return () => clearInterval(interval);
-    }, [open, api, onOpenChange]);
+    }, [open, api]);
+
+    // Handle auto-advance when progress hits 100
+    useEffect(() => {
+        if (progress >= 100 && api) {
+            if (api.canScrollNext()) {
+                api.scrollNext();
+            } else {
+                onOpenChange(false);
+            }
+        }
+    }, [progress, api, onOpenChange]);
 
 
     if (!userStories || userStories.length === 0) return null;
