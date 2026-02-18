@@ -33,9 +33,15 @@ service cloud.firestore {
     /* ================= BILLS ================= */
     match /users/{userId}/bills/{billId} {
       allow read: if isOwner(userId);
-      allow create: if isOwner(userId);
+
+      allow create: if isOwner(userId)
+        && request.resource.data.status == 'OPEN'
+        && request.resource.data.customerId is string
+        && request.resource.data.createdAt is timestamp;
+
       allow update: if isOwner(userId)
         && resource.data.status == 'OPEN';
+
       allow delete: if false;
     }
 
