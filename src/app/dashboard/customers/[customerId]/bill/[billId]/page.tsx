@@ -36,6 +36,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowLeft, Loader2, IndianRupee, Landmark, PlusCircle, FileSignature, AlertTriangle, Trash2 } from 'lucide-react';
 import Link from 'next/link';
+import { cn } from '@/lib/utils';
 
 
 export default function BillDetailPage(props: { params: Promise<{ customerId: string, billId: string }>, searchParams: Promise<{ [key: string]: string | string[] | undefined }> }) {
@@ -394,3 +395,4 @@ export default function BillDetailPage(props: { params: Promise<{ customerId: st
     </div>
   );
 }
+    
