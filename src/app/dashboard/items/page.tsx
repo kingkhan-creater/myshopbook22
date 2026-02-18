@@ -243,10 +243,8 @@ export default function ItemsPage() {
             if (!customerSnap.exists()) throw new Error("Customer not found.");
 
             let newSaleTotal = 0;
-            const itemsToAdd = saleItems.map(item => {
-                const total = (item.qty * item.rate) - item.discount;
-                newSaleTotal += total;
-                return { ...item, total };
+            saleItems.forEach(item => {
+                newSaleTotal += (item.qty * item.rate) - item.discount;
             });
 
             const billSnap = await transaction.get(billRef);
@@ -389,7 +387,7 @@ export default function ItemsPage() {
                             </FormControl>
                             {photoBase64 && <Image src={photoBase64} alt="Preview" width={80} height={80} className="mt-2 rounded-md border"/>}
                         </FormItem>
-                        <DialogFooter><DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose><Button type="submit">Save</Button></DialogFooter>
+                        <DialogFooter><DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose><Button type="submit">Save Changes</Button></DialogFooter>
                     </form>
                 </Form>
             </DialogContent>

@@ -16,7 +16,6 @@ import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
 import { Textarea } from '@/components/ui/textarea';
-import { Input } from '@/components/ui/input';
 import { PlusCircle, Loader2, Camera, X, Globe, Users, Lock, Eye, Play, Pause, Video } from 'lucide-react';
 import {
   Carousel,
@@ -93,7 +92,6 @@ const StoryCreator = ({ open, onOpenChange, onStoryCreated }: { open: boolean, o
         try {
             let finalVideoUrl: string | null = null;
             
-            // Handle Video Upload to Cloudinary
             if (videoFile) {
                 const { signature, timestamp, cloudName, apiKey, folder } = await getCloudinarySignature('stories');
                 const formData = new FormData();
@@ -153,63 +151,73 @@ const StoryCreator = ({ open, onOpenChange, onStoryCreated }: { open: boolean, o
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-lg">
-                <DialogHeader>
+            <DialogContent className="max-w-lg max-h-[95vh] flex flex-col p-0 overflow-hidden">
+                <DialogHeader className="p-6 pb-2">
                     <DialogTitle>Create a new Story</DialogTitle>
                 </DialogHeader>
-                <div className="space-y-4 py-4">
-                    <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                            <Avatar className="h-10 w-10">
-                                <AvatarImage src={user?.photoURL || undefined} />
-                                <AvatarFallback>{getInitials(user?.displayName || '')}</AvatarFallback>
-                            </Avatar>
-                            <p className="font-bold text-sm">{user?.displayName}</p>
+                
+                <ScrollArea className="flex-1 p-6 pt-0">
+                    <div className="space-y-4 pb-4">
+                        <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                                <Avatar className="h-10 w-10">
+                                    <AvatarImage src={user?.photoURL || undefined} />
+                                    <AvatarFallback>{getInitials(user?.displayName || '')}</AvatarFallback>
+                                </Avatar>
+                                <p className="font-bold text-sm">{user?.displayName}</p>
+                            </div>
+                            <Select value={privacy} onValueChange={(v: any) => setPrivacy(v)}>
+                                <SelectTrigger className="h-8 w-fit gap-2">
+                                    {privacy === 'public' && <Globe className="h-3 w-3" />}
+                                    {privacy === 'friends' && <Users className="h-3 w-3" />}
+                                    {privacy === 'private' && <Lock className="h-3 w-3" />}
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="public"><div className="flex items-center gap-2"><Globe className="h-3 w-3" /> Public</div></SelectItem>
+                                    <SelectItem value="friends"><div className="flex items-center gap-2"><Users className="h-3 w-3" /> Friends</div></SelectItem>
+                                    <SelectItem value="private"><div className="flex items-center gap-2"><Lock className="h-3 w-3" /> Only Me</div></SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
-                        <Select value={privacy} onValueChange={(v: any) => setPrivacy(v)}>
-                            <SelectTrigger className="h-8 w-fit gap-2">
-                                {privacy === 'public' && <Globe className="h-3 w-3" />}
-                                {privacy === 'friends' && <Users className="h-3 w-3" />}
-                                {privacy === 'private' && <Lock className="h-3 w-3" />}
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="public"><div className="flex items-center gap-2"><Globe className="h-3 w-3" /> Public</div></SelectItem>
-                                <SelectItem value="friends"><div className="flex items-center gap-2"><Users className="h-3 w-3" /> Friends</div></SelectItem>
-                                <SelectItem value="private"><div className="flex items-center gap-2"><Lock className="h-3 w-3" /> Only Me</div></SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <Textarea placeholder="Add a caption..." value={text} onChange={(e) => setText(e.target.value)} />
-                    
-                    <div className="space-y-2">
-                        {photoBase64 ? (
-                            <div className="relative rounded-md overflow-hidden bg-black/5">
-                                <Image src={photoBase64} alt="Story preview" width={400} height={400} className="rounded-md mx-auto object-contain" />
-                                <Button variant="destructive" size="icon" className="absolute top-2 right-2 h-7 w-7 rounded-full" onClick={() => setPhotoBase64(null)}><X className="h-4 w-4" /></Button>
-                            </div>
-                        ) : videoPreview ? (
-                            <div className="relative rounded-md overflow-hidden bg-black/5 aspect-square">
-                                <video src={videoPreview} className="w-full h-full object-contain" autoPlay muted loop />
-                                <Button variant="destructive" size="icon" className="absolute top-2 right-2 h-7 w-7 rounded-full" onClick={() => { setVideoFile(null); setVideoPreview(null); }}><X className="h-4 w-4" /></Button>
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-2 gap-4">
-                                <Button variant="outline" className="h-32 flex-col gap-2" onClick={() => photoInputRef.current?.click()}>
-                                    <Camera className="h-8 w-8 text-muted-foreground" />
-                                    <span>Add Photo</span>
-                                </Button>
-                                <Button variant="outline" className="h-32 flex-col gap-2" onClick={() => videoInputRef.current?.click()}>
-                                    <Video className="h-8 w-8 text-muted-foreground" />
-                                    <span>Add Video</span>
-                                </Button>
-                            </div>
-                        )}
+                        
+                        <Textarea 
+                            placeholder="Add a caption..." 
+                            value={text} 
+                            onChange={(e) => setText(e.target.value)} 
+                            className="min-h-[100px] resize-none"
+                        />
+                        
+                        <div className="space-y-2">
+                            {photoBase64 ? (
+                                <div className="relative rounded-md overflow-hidden bg-black/5">
+                                    <Image src={photoBase64} alt="Story preview" width={400} height={400} className="rounded-md mx-auto object-contain" />
+                                    <Button variant="destructive" size="icon" className="absolute top-2 right-2 h-7 w-7 rounded-full shadow-md" onClick={() => setPhotoBase64(null)}><X className="h-4 w-4" /></Button>
+                                </div>
+                            ) : videoPreview ? (
+                                <div className="relative rounded-md overflow-hidden bg-black/5 aspect-square">
+                                    <video src={videoPreview} className="w-full h-full object-contain" autoPlay muted loop />
+                                    <Button variant="destructive" size="icon" className="absolute top-2 right-2 h-7 w-7 rounded-full shadow-md" onClick={() => { setVideoFile(null); setVideoPreview(null); }}><X className="h-4 w-4" /></Button>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-2 gap-4">
+                                    <Button variant="outline" className="h-32 flex-col gap-2" onClick={() => photoInputRef.current?.click()}>
+                                        <Camera className="h-8 w-8 text-muted-foreground" />
+                                        <span>Add Photo</span>
+                                    </Button>
+                                    <Button variant="outline" className="h-32 flex-col gap-2" onClick={() => videoInputRef.current?.click()}>
+                                        <Video className="h-8 w-8 text-muted-foreground" />
+                                        <span>Add Video</span>
+                                    </Button>
+                                </div>
+                            )}
+                        </div>
                     </div>
                     <input type="file" ref={photoInputRef} onChange={handlePhotoChange} className="hidden" accept="image/*" />
                     <input type="file" ref={videoInputRef} onChange={handleVideoChange} className="hidden" accept="video/*" />
-                </div>
-                <DialogFooter>
+                </ScrollArea>
+
+                <DialogFooter className="p-6 pt-2 border-t bg-background">
                     <DialogClose asChild><Button variant="ghost">Cancel</Button></DialogClose>
                     <Button onClick={handleCreateStory} disabled={isSaving || (!photoBase64 && !videoFile)}>
                         {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Post Story
@@ -232,7 +240,6 @@ const StoryViewer = ({ open, onOpenChange, userStories }: { open: boolean, onOpe
     
     const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
 
-    // Sync current slide index
     useEffect(() => {
         if (!api) return;
         const onSelect = () => {
@@ -240,7 +247,6 @@ const StoryViewer = ({ open, onOpenChange, userStories }: { open: boolean, onOpe
             setCurrent(index);
             setProgress(0);
             
-            // Handle video playback
             videoRefs.current.forEach((vid, id) => {
                 if (id === userStories?.[index]?.id) {
                     vid.currentTime = 0;
@@ -254,7 +260,6 @@ const StoryViewer = ({ open, onOpenChange, userStories }: { open: boolean, onOpe
         return () => { api.off("select", onSelect); }
     }, [api, userStories]);
     
-    // Reset progress when opening
     useEffect(() => {
         if (open) {
             setProgress(0);
@@ -263,18 +268,16 @@ const StoryViewer = ({ open, onOpenChange, userStories }: { open: boolean, onOpe
         }
     }, [open, api, userStories]);
 
-    // Timer logic for progress bar
     useEffect(() => {
         if (!open || !api || isViewerListOpen) return;
 
         const interval = setInterval(() => {
             setProgress((prev) => (prev < 100 ? prev + 1 : 100));
-        }, 50); // 5 seconds total per story
+        }, 50);
 
         return () => clearInterval(interval);
     }, [open, api, isViewerListOpen]);
 
-    // Handle auto-advance
     useEffect(() => {
         if (progress >= 100 && api && !isViewerListOpen) {
             if (api.canScrollNext()) api.scrollNext();
@@ -282,7 +285,6 @@ const StoryViewer = ({ open, onOpenChange, userStories }: { open: boolean, onOpe
         }
     }, [progress, api, onOpenChange, isViewerListOpen]);
 
-    // Track views
     useEffect(() => {
         if (!open || !userStories || !user || current === undefined) return;
         const story = userStories[current];
@@ -428,7 +430,7 @@ const StoryViewer = ({ open, onOpenChange, userStories }: { open: boolean, onOpe
                             </div>
                         )}
                     </ScrollArea>
-                    <DialogFooter className="p-4 border-t"><DialogClose asChild><Button variant="secondary" className="w-full">Close</Button></DialogClose></DialogFooter>
+                    <div className="p-4 border-t"><DialogClose asChild><Button variant="secondary" className="w-full">Close</Button></DialogClose></div>
                 </DialogContent>
             </Dialog>
         </>

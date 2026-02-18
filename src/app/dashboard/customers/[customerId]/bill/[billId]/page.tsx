@@ -375,7 +375,7 @@ export default function BillDetailPage(props: { params: Promise<{ customerId: st
                                 <TableCell className="text-xs">{p.method}</TableCell>
                                 <TableCell className="text-right font-bold text-green-600">${p.amount.toFixed(2)}</TableCell>
                             </TableRow>
-                        )) : <TableRow><TableCell colSpan={3} className="text-center h-24 text-muted-foreground">No payments.</TableCell></TableRow>}
+                        )) : <TableRow><TableCell colSpan={3} className="text-center h-24 text-muted-foreground">No payments recorded yet.</TableCell></TableRow>}
                     </TableBody>
                 </Table></div>
             </CardContent>
