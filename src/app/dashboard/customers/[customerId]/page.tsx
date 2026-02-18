@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, use } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { db } from '@/lib/firebase';
 import {
@@ -14,7 +14,6 @@ import {
 import type { Customer, CustomerBill } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
-import { useParams } from 'next/navigation';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
@@ -75,10 +74,9 @@ const BillCard = ({ bill, customerId }: { bill: CustomerBill, customerId: string
   )
 }
 
-export default function CustomerLedgerPage() {
+export default function CustomerLedgerPage({ params }: { params: Promise<{ customerId: string }> }) {
+  const { customerId } = use(params);
   const { user } = useAuth();
-  const params = useParams<{ customerId: string }>();
-  const customerId = params.customerId;
   const { toast } = useToast();
 
   const [customer, setCustomer] = useState<Customer | null>(null);

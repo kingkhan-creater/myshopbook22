@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, use } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { db } from '@/lib/firebase';
 import {
@@ -15,7 +15,7 @@ import {
   getCountFromServer,
 } from 'firebase/firestore';
 import type { Post, PublicUserProfile } from '@/lib/types';
-import { useParams, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
@@ -41,8 +41,8 @@ import { Label } from '@/components/ui/label';
 
 const getInitials = (name: string) => (name || '').substring(0, 2).toUpperCase();
 
-export default function UserProfilePage() {
-  const { userId } = useParams<{ userId: string }>();
+export default function UserProfilePage({ params }: { params: Promise<{ userId: string }> }) {
+  const { userId } = use(params);
   const { user, profile: myProfile } = useAuth();
   const { toast } = useToast();
   const router = useRouter();

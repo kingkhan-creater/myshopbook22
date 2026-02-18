@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useState, useEffect, use } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { db } from '@/lib/firebase';
 import {
@@ -33,13 +33,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowLeft, Loader2, Landmark } from 'lucide-react';
 import Link from 'next/link';
 
-export default function PurchaseBillDetailPage() {
+export default function PurchaseBillDetailPage({ params }: { params: Promise<{ billId: string }> }) {
+  const { billId } = use(params);
   const { user } = useAuth();
   const router = useRouter();
-  const params = useParams<{ billId: string }>();
   const { toast } = useToast();
-
-  const billId = params.billId;
 
   const [supplier, setSupplier] = useState<Supplier | null>(null);
   const [bill, setBill] = useState<PurchaseBill | null>(null);

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, use } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { db } from '@/lib/firebase';
 import {
@@ -17,7 +17,7 @@ import {
   arrayUnion,
   deleteField,
 } from 'firebase/firestore';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -65,13 +65,12 @@ const SharedItemCard = ({ item }: { item: ItemSnapshot }) => (
   </div>
 );
 
-export default function ChatPage() {
+export default function ChatPage({ params }: { params: Promise<{ peerId: string }> }) {
+  const { peerId } = use(params);
   const { user } = useAuth();
   const router = useRouter();
-  const params = useParams<{ peerId: string }>();
   const { toast } = useToast();
 
-  const peerId = params.peerId;
   const chatId = useMemo(() => (user ? createChatId(user.uid, peerId) : null), [user, peerId]);
 
   const [peerProfile, setPeerProfile] = useState<PublicUserProfile | null>(null);
