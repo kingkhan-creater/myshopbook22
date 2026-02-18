@@ -371,7 +371,7 @@ export default function BillDetailPage(props: { params: Promise<{ customerId: st
                     <TableBody>
                         {payments.length > 0 ? payments.map(p => (
                             <TableRow key={p.id}>
-                                <TableCell className="text-xs">{p.createdAt ? format(p.createdAt.toDate(), 'PP p') : 'Just now'}</TableCell>
+                                <TableCell className="text-xs">{(p.createdAt && typeof p.createdAt.toDate === 'function') ? format(p.createdAt.toDate(), 'PP p') : 'Just now'}</TableCell>
                                 <TableCell className="text-xs">{p.method}</TableCell>
                                 <TableCell className="text-right font-bold text-green-600">${p.amount.toFixed(2)}</TableCell>
                             </TableRow>
