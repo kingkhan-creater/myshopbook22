@@ -23,6 +23,13 @@ service cloud.firestore {
       allow read, write: if isOwner(userId);
     }
 
+    /* ================= PUBLIC USERS ================= */
+    // Public profiles must be readable by all authenticated users for discovery/search
+    match /publicUsers/{userId} {
+      allow read: if isAuth();
+      allow write: if isOwner(userId);
+    }
+
     /* ================= BILLS ================= */
     match /users/{userId}/bills/{billId} {
       allow read: if isOwner(userId);
@@ -63,7 +70,25 @@ service cloud.firestore {
         && request.resource.data.userId == request.auth.uid;
       allow update: if isAuth()
         && resource.data.userId == request.auth.uid;
-      allow delete: if false;
+      allow delete: if isAuth() && (
+        resource.data.userId == request.auth.uid || 
+        get(/databases/$(database)/documents/posts/$(postId)).data.userId == request.auth.uid
+      );
+    }
+
+    /* ================= STORIES ================= */
+    match /stories/{storyId} {
+      allow read: if isAuth();
+      allow create: if isAuth() && request.resource.data.userId == request.auth.uid;
+      allow delete: if isAuth() && resource.data.userId == request.auth.uid;
+    }
+
+    /* ================= MARKETPLACE ================= */
+    match /marketplace/{itemId} {
+      allow read: if isAuth();
+      allow create: if isAuth() && request.resource.data.sellerId == request.auth.uid;
+      allow update: if isAuth() && resource.data.sellerId == request.auth.uid;
+      allow delete: if isAuth() && resource.data.sellerId == request.auth.uid;
     }
 
     /* ================= FRIENDS ================= */
@@ -85,7 +110,7 @@ service cloud.firestore {
 
     match /chats/{chatId}/messages/{messageId} {
       function isMemberOfParentChat() {
-        return request.auth != null && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId), {data: {members: []}}).data.members;
+        return request.auth != null && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.members;
       }
 
       allow read: if isMemberOfParentChat() && (resource.data.get('deletedFor', [])).hasAny([request.auth.uid]) == false;
