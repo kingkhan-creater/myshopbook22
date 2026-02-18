@@ -414,7 +414,7 @@ const StoryViewer = ({ open, onOpenChange, userStories }: { open: boolean, onOpe
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-        </> author.name
+        </>
     );
 };
 
