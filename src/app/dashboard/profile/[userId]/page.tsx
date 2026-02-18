@@ -26,6 +26,8 @@ import { PostCard } from '@/components/dashboard/post-card';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Textarea } from '@/components/ui/textarea';
+import { Separator } from '@/components/ui/separator';
+import { cn } from '@/lib/utils';
 
 const getInitials = (name: string) => (name || '').substring(0, 2).toUpperCase();
 
