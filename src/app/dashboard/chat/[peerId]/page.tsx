@@ -45,6 +45,8 @@ const createChatId = (uid1: string, uid2: string) => {
   return [uid1, uid2].sort().join('_');
 };
 
+const getInitials = (name: string) => (name || '').substring(0, 2).toUpperCase();
+
 const SharedItemCard = ({ item }: { item: ItemSnapshot }) => (
   <div className="flex items-center gap-3 rounded-lg border p-3 bg-card">
      {item.photoBase64 ? (
