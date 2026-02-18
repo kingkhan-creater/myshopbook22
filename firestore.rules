@@ -52,10 +52,15 @@ service cloud.firestore {
       allow create: if isAuth()
         && request.resource.data.userId == request.auth.uid;
 
-      allow update: if isAuth()
-        && resource.data.userId == request.auth.uid;
+      allow update: if isAuth() && (
+        // Post author can update anything (text, imageUrl, etc.)
+        (resource.data.userId == request.auth.uid)
+        ||
+        // Others can ONLY update reactionCounts and commentCount (for Liking/Commenting)
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactionCounts', 'commentCount']))
+      );
 
-      allow delete: if false; // soft delete only
+      allow delete: if isAuth() && resource.data.userId == request.auth.uid;
     }
 
     match /posts/{postId}/likes/{userId} {
@@ -68,12 +73,26 @@ service cloud.firestore {
       allow read: if isAuth();
       allow create: if isAuth()
         && request.resource.data.userId == request.auth.uid;
-      allow update: if isAuth()
-        && resource.data.userId == request.auth.uid;
+      
+      allow update: if isAuth() && (
+        // Only comment owner can edit the text or metadata
+        (resource.data.userId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasAny(['text', 'updatedAt', 'isEdited']))
+        ||
+        // Anyone can update the likeCount if comment likes are implemented
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likeCount']))
+      );
+
       allow delete: if isAuth() && (
+        // Comment owner can delete
         resource.data.userId == request.auth.uid || 
+        // Post owner can delete any comment on their post
         get(/databases/$(database)/documents/posts/$(postId)).data.userId == request.auth.uid
       );
+    }
+
+    match /posts/{postId}/comments/{commentId}/likes/{userId} {
+      allow read: if isAuth();
+      allow create, delete: if isAuth() && request.auth.uid == userId;
     }
 
     /* ================= STORIES ================= */
@@ -87,36 +106,40 @@ service cloud.firestore {
     match /marketplace/{itemId} {
       allow read: if isAuth();
       allow create: if isAuth() && request.resource.data.sellerId == request.auth.uid;
-      allow update: if isAuth() && resource.data.sellerId == request.auth.uid;
-      allow delete: if isAuth() && resource.data.sellerId == request.auth.uid;
+      allow update: if isAuth() && request.resource.data.sellerId == request.auth.uid;
+      allow delete: if isAuth() && request.resource.data.sellerId == request.auth.uid;
     }
 
     /* ================= FRIENDS ================= */
     match /friendships/{id} {
-      allow read, update: if request.auth.uid in resource.data.users;
-      allow create: if request.auth.uid in request.resource.data.users;
+      // Allow reading if participant OR if friendship is accepted (allows profile counts to work)
+      allow read: if isAuth() && (
+        request.auth.uid in resource.data.users 
+        || resource.data.status == 'accepted'
+      );
+      allow update: if isAuth() && request.auth.uid in resource.data.users;
+      allow create: if isAuth() && request.auth.uid in request.resource.data.users;
       allow delete: if false;
     }
 
     /* ================= CHATS ================= */
     match /chats/{chatId} {
-      function isMember() {
-        return request.auth != null && request.auth.uid in resource.data.members;
+      function isChatMember() {
+        return isAuth() && request.auth.uid in resource.data.members;
       }
-      allow read, update: if isMember();
-      allow create: if request.auth != null && request.auth.uid in request.resource.data.members;
+      allow read, update: if isChatMember();
+      allow create: if isAuth() && request.auth.uid in request.resource.data.members;
       allow delete: if false;
     }
 
     match /chats/{chatId}/messages/{messageId} {
       function isMemberOfParentChat() {
-        return request.auth != null && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.members;
+        // Use get().data.get() to safely handle cases where the parent doc or members field is missing
+        return isAuth() && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.get('members', []);
       }
 
       allow read: if isMemberOfParentChat() && (resource.data.get('deletedFor', [])).hasAny([request.auth.uid]) == false;
-      
       allow create: if isMemberOfParentChat() && request.resource.data.senderId == request.auth.uid;
-
       allow update: if isMemberOfParentChat() && (
         // "Delete for me"
         (
@@ -124,16 +147,12 @@ service cloud.firestore {
           request.resource.data.deletedFor == resource.data.get('deletedFor', []).concat([request.auth.uid])
         )
         ||
-        // "Delete for everyone"
+        // "Delete for everyone" (Only sender)
         (
           resource.data.senderId == request.auth.uid &&
-          request.resource.data.deletedForEveryone == true &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'deletedForEveryone', 'deletedAt', 'text', 'imageUrl', 'itemSnapshot', 'originalText', 'originalImageUrl', 'originalItemSnapshot'
-          ])
+          request.resource.data.deletedForEveryone == true
         )
       );
-
       allow delete: if false;
     }
   }
