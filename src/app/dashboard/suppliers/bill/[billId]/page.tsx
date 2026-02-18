@@ -33,8 +33,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowLeft, Loader2, Landmark } from 'lucide-react';
 import Link from 'next/link';
 
-export default function PurchaseBillDetailPage({ params }: { params: Promise<{ billId: string }> }) {
-  const { billId } = use(params);
+export default function PurchaseBillDetailPage(props: { params: Promise<{ billId: string }>, searchParams: Promise<{ [key: string]: string | string[] | undefined }> }) {
+  const { billId } = use(props.params);
+  // Unwrap searchParams to satisfy dynamic API proxy
+  use(props.searchParams);
+
   const { user } = useAuth();
   const router = useRouter();
   const { toast } = useToast();

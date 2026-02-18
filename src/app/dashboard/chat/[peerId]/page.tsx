@@ -65,8 +65,11 @@ const SharedItemCard = ({ item }: { item: ItemSnapshot }) => (
   </div>
 );
 
-export default function ChatPage({ params }: { params: Promise<{ peerId: string }> }) {
-  const { peerId } = use(params);
+export default function ChatPage(props: { params: Promise<{ peerId: string }>, searchParams: Promise<{ [key: string]: string | string[] | undefined }> }) {
+  const { peerId } = use(props.params);
+  // Unwrap searchParams to satisfy dynamic API proxy even if not used
+  use(props.searchParams);
+  
   const { user } = useAuth();
   const router = useRouter();
   const { toast } = useToast();

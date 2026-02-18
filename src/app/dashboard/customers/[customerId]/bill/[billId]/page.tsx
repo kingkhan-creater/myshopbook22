@@ -38,8 +38,11 @@ import { ArrowLeft, Loader2, IndianRupee, Landmark, PlusCircle, FileSignature, A
 import Link from 'next/link';
 
 
-export default function BillDetailPage({ params }: { params: Promise<{ customerId: string, billId: string }> }) {
-  const { customerId, billId } = use(params);
+export default function BillDetailPage(props: { params: Promise<{ customerId: string, billId: string }>, searchParams: Promise<{ [key: string]: string | string[] | undefined }> }) {
+  const { customerId, billId } = use(props.params);
+  // Unwrap searchParams to satisfy dynamic API proxy
+  use(props.searchParams);
+
   const { user } = useAuth();
   const router = useRouter();
   const { toast } = useToast();

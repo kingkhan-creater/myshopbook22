@@ -74,8 +74,11 @@ const BillCard = ({ bill, customerId }: { bill: CustomerBill, customerId: string
   )
 }
 
-export default function CustomerLedgerPage({ params }: { params: Promise<{ customerId: string }> }) {
-  const { customerId } = use(params);
+export default function CustomerLedgerPage(props: { params: Promise<{ customerId: string }>, searchParams: Promise<{ [key: string]: string | string[] | undefined }> }) {
+  const { customerId } = use(props.params);
+  // Unwrap searchParams to satisfy dynamic API proxy
+  use(props.searchParams);
+
   const { user } = useAuth();
   const { toast } = useToast();
 

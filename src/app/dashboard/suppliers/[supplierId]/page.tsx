@@ -61,8 +61,11 @@ const BillCard = ({ bill }: { bill: PurchaseBill }) => {
   )
 }
 
-export default function SupplierLedgerPage({ params }: { params: Promise<{ supplierId: string }> }) {
-  const { supplierId } = use(params);
+export default function SupplierLedgerPage(props: { params: Promise<{ supplierId: string }>, searchParams: Promise<{ [key: string]: string | string[] | undefined }> }) {
+  const { supplierId } = use(props.params);
+  // Unwrap searchParams to satisfy dynamic API proxy
+  use(props.searchParams);
+
   const { user } = useAuth();
   const { toast } = useToast();
 

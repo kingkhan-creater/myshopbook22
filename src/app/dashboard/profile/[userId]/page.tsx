@@ -41,8 +41,11 @@ import { Label } from '@/components/ui/label';
 
 const getInitials = (name: string) => (name || '').substring(0, 2).toUpperCase();
 
-export default function UserProfilePage({ params }: { params: Promise<{ userId: string }> }) {
-  const { userId } = use(params);
+export default function UserProfilePage(props: { params: Promise<{ userId: string }>, searchParams: Promise<{ [key: string]: string | string[] | undefined }> }) {
+  const { userId } = use(props.params);
+  // Unwrap searchParams to satisfy dynamic API proxy
+  use(props.searchParams);
+
   const { user, profile: myProfile } = useAuth();
   const { toast } = useToast();
   const router = useRouter();

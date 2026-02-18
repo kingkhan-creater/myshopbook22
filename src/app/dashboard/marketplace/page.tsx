@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, use } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { db } from '@/lib/firebase';
 import { collection, query, where, orderBy, onSnapshot, doc, updateDoc } from 'firebase/firestore';
@@ -53,7 +53,10 @@ const MarketplaceItemCard = ({ item, isOwner, onMarkAsSold }: { item: Marketplac
   </Card>
 );
 
-export default function MarketplacePage() {
+export default function MarketplacePage(props: { searchParams: Promise<{ [key: string]: string | string[] | undefined }> }) {
+  // Unwrap searchParams to satisfy dynamic API proxy requirements
+  use(props.searchParams);
+  
   const { user, profile } = useAuth();
   const { toast } = useToast();
   const [items, setItems] = useState<MarketplaceItem[]>([]);

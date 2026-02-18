@@ -42,8 +42,11 @@ const SellerItemCard = ({ item, isOwner, onMarkAsSold }: { item: MarketplaceItem
   </Card>
 );
 
-export default function SellerMarketplacePage({ params }: { params: Promise<{ userId: string }> }) {
-  const { userId: sellerId } = use(params);
+export default function SellerMarketplacePage(props: { params: Promise<{ userId: string }>, searchParams: Promise<{ [key: string]: string | string[] | undefined }> }) {
+  const { userId: sellerId } = use(props.params);
+  // Unwrap searchParams to satisfy dynamic API proxy
+  use(props.searchParams);
+
   const { user, profile } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
