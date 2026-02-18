@@ -140,7 +140,6 @@ export default function PurchasePage() {
 
   const handleSaveSupplier = async (values: SupplierFormValues) => {
     if (!user) return;
-    supplierForm.control.disabled = true;
     try {
         const suppliersRef = collection(db, 'users', user.uid, 'suppliers');
         const newSupplierRef = await addDoc(suppliersRef, {
@@ -156,8 +155,6 @@ export default function PurchasePage() {
     } catch(e) {
         console.error(e);
         toast({ variant: 'destructive', title: 'Error', description: 'Could not add supplier.' });
-    } finally {
-        supplierForm.control.disabled = false;
     }
   }
 
@@ -224,36 +221,36 @@ export default function PurchasePage() {
 
 
   return (
-    <div className="container mx-auto p-4 sm:p-6 lg:p-8">
-      <Card>
-        <CardHeader>
+    <div className="container mx-auto p-2 sm:p-6 lg:p-8">
+      <Card className="border-none sm:border shadow-none sm:shadow-sm">
+        <CardHeader className="px-4 py-4 sm:p-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-               <Button variant="outline" size="icon" asChild>
-                <Link href="/dashboard/items"><ArrowLeft /></Link>
+            <div className="flex items-center gap-3 sm:gap-4">
+               <Button variant="outline" size="icon" asChild className="h-8 w-8 sm:h-10 sm:w-10">
+                <Link href="/dashboard/items"><ArrowLeft className="h-4 w-4 sm:h-5 sm:w-5" /></Link>
                </Button>
                <div>
-                <CardTitle className="text-2xl sm:text-3xl font-bold tracking-tight">New Purchase Bill</CardTitle>
-                <CardDescription>Add items to inventory from a supplier.</CardDescription>
+                <CardTitle className="text-xl sm:text-3xl font-bold tracking-tight">New Purchase Bill</CardTitle>
+                <CardDescription className="text-xs sm:text-sm">Add items to inventory from a supplier.</CardDescription>
                </div>
             </div>
-            <Button onClick={handleSaveBill} disabled={isSaving} className="w-full sm:w-auto">
+            <Button onClick={handleSaveBill} disabled={isSaving} className="w-full sm:w-auto h-10">
               {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Save Bill
             </Button>
           </div>
         </CardHeader>
-        <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <CardContent className="space-y-4 sm:space-y-6 px-2 sm:px-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                 <Card>
-                    <CardHeader className="p-4 sm:p-6">
-                        <CardTitle className="text-lg">Supplier Details</CardTitle>
+                    <CardHeader className="p-4">
+                        <CardTitle className="text-base sm:text-lg">Supplier Details</CardTitle>
                     </CardHeader>
-                    <CardContent className="p-4 sm:p-6 pt-0 sm:pt-0">
-                    {loading ? <p>Loading suppliers...</p> : (
+                    <CardContent className="p-4 pt-0">
+                    {loading ? <div className="h-10 w-full bg-muted animate-pulse rounded" /> : (
                          <div className="flex items-center gap-2">
                              <Select value={selectedSupplierId} onValueChange={setSelectedSupplierId}>
-                                <SelectTrigger>
+                                <SelectTrigger className="h-10">
                                     <SelectValue placeholder="Select a supplier" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -262,7 +259,7 @@ export default function PurchasePage() {
                             </Select>
                              <Dialog open={isSupplierDialogOpen} onOpenChange={setIsSupplierDialogOpen}>
                                 <DialogTrigger asChild>
-                                    <Button variant="outline" size="icon"><UserPlus/></Button>
+                                    <Button variant="outline" size="icon" className="h-10 w-10 shrink-0"><UserPlus className="h-4 w-4"/></Button>
                                 </DialogTrigger>
                                 <DialogContent className="sm:max-w-[425px]">
                                     <DialogHeader>
@@ -282,7 +279,7 @@ export default function PurchasePage() {
                                             )} />
                                             <DialogFooter>
                                                 <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
-                                                <Button type="submit" disabled={supplierForm.control.disabled}>Save Supplier</Button>
+                                                <Button type="submit">Save Supplier</Button>
                                             </DialogFooter>
                                         </form>
                                     </Form>
@@ -295,15 +292,15 @@ export default function PurchasePage() {
             </div>
 
             <Card>
-                <CardHeader className="p-4 sm:p-6">
-                    <CardTitle className="text-lg">Bill Items</CardTitle>
+                <CardHeader className="p-4">
+                    <CardTitle className="text-base sm:text-lg">Bill Items</CardTitle>
                 </CardHeader>
-                <CardContent className="p-0 sm:p-6">
-                    <div className="overflow-x-auto">
+                <CardContent className="p-0 sm:p-4">
+                    <div className="overflow-x-auto w-full">
                         <Table>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead className="min-w-[200px]">Item</TableHead>
+                                    <TableHead className="min-w-[180px] sm:min-w-[200px]">Item</TableHead>
                                     <TableHead className="min-w-[80px]">Qty</TableHead>
                                     <TableHead className="min-w-[100px]">Purchase Price</TableHead>
                                     <TableHead className="min-w-[100px]">Selling Price</TableHead>
@@ -314,12 +311,12 @@ export default function PurchasePage() {
                             <TableBody>
                                 {billItems.map(item => (
                                     <TableRow key={item.rowId}>
-                                        <TableCell>
+                                        <TableCell className="py-2">
                                             <Select
                                               value={item.itemId}
                                               onValueChange={(value) => handleBillItemChange(item.rowId, 'itemId', value)}>
                                                 <SelectTrigger className="h-9">
-                                                    <SelectValue placeholder="Select an item" />
+                                                    <SelectValue placeholder="Select item" />
                                                 </SelectTrigger>
                                                 <SelectContent>
                                                     <SelectItem value="new">-- Create New Item --</SelectItem>
@@ -329,25 +326,25 @@ export default function PurchasePage() {
                                             {item.itemId === 'new' && (
                                                 <Input 
                                                     placeholder="Item name"
-                                                    className="mt-2 h-8 text-sm"
+                                                    className="mt-2 h-8 text-xs sm:text-sm"
                                                     value={item.itemName}
                                                     onChange={(e) => handleBillItemChange(item.rowId, 'itemName', e.target.value)}
                                                 />
                                             )}
                                         </TableCell>
-                                        <TableCell>
-                                            <Input type="number" className="h-9 w-full" value={item.qty} onChange={(e) => handleBillItemChange(item.rowId, 'qty', parseInt(e.target.value) || 0)} />
+                                        <TableCell className="py-2">
+                                            <Input type="number" className="h-9 w-full min-w-[60px]" value={item.qty} onChange={(e) => handleBillItemChange(item.rowId, 'qty', parseInt(e.target.value) || 0)} />
                                         </TableCell>
-                                        <TableCell>
-                                            <Input type="number" className="h-9 w-full" value={item.price} onChange={(e) => handleBillItemChange(item.rowId, 'price', parseFloat(e.target.value) || 0)} />
+                                        <TableCell className="py-2">
+                                            <Input type="number" className="h-9 w-full min-w-[80px]" value={item.price} onChange={(e) => handleBillItemChange(item.rowId, 'price', parseFloat(e.target.value) || 0)} />
                                         </TableCell>
-                                        <TableCell>
-                                            <Input type="number" className="h-9 w-full" value={item.sellingPrice} onChange={(e) => handleBillItemChange(item.rowId, 'sellingPrice', parseFloat(e.target.value) || 0)} />
+                                        <TableCell className="py-2">
+                                            <Input type="number" className="h-9 w-full min-w-[80px]" value={item.sellingPrice} onChange={(e) => handleBillItemChange(item.rowId, 'sellingPrice', parseFloat(e.target.value) || 0)} />
                                         </TableCell>
-                                        <TableCell className="font-medium">
+                                        <TableCell className="py-2 font-medium text-sm">
                                             ${(item.qty * item.price).toFixed(2)}
                                         </TableCell>
-                                        <TableCell>
+                                        <TableCell className="py-2">
                                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeBillRow(item.rowId)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                                         </TableCell>
                                     </TableRow>
@@ -364,31 +361,31 @@ export default function PurchasePage() {
             </Card>
 
              <Card>
-                <CardHeader className="p-4 sm:p-6">
-                    <CardTitle className="text-lg">Payment & Summary</CardTitle>
+                <CardHeader className="p-4">
+                    <CardTitle className="text-base sm:text-lg">Payment & Summary</CardTitle>
                 </CardHeader>
-                <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-4 sm:p-6 pt-0 sm:pt-0">
-                    <div className="text-center p-4 bg-muted rounded-lg flex flex-col justify-center">
-                        <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Total Items</p>
-                        <p className="text-2xl font-bold">{billItems.length}</p>
+                <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 p-4 pt-0">
+                    <div className="text-center p-3 bg-muted rounded-lg flex flex-col justify-center">
+                        <p className="text-[10px] sm:text-xs text-muted-foreground uppercase tracking-wider font-semibold">Total Items</p>
+                        <p className="text-lg sm:text-2xl font-bold">{billItems.length}</p>
                     </div>
-                    <div className="text-center p-4 bg-muted rounded-lg flex flex-col justify-center">
-                        <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Total Quantity</p>
-                        <p className="text-2xl font-bold">{summary.totalQty}</p>
+                    <div className="text-center p-3 bg-muted rounded-lg flex flex-col justify-center">
+                        <p className="text-[10px] sm:text-xs text-muted-foreground uppercase tracking-wider font-semibold">Total Quantity</p>
+                        <p className="text-lg sm:text-2xl font-bold">{summary.totalQty}</p>
                     </div>
-                    <div className="text-center p-4 bg-primary text-primary-foreground rounded-lg flex flex-col justify-center">
-                        <p className="text-xs opacity-80 uppercase tracking-wider font-semibold">Grand Total</p>
-                        <p className="text-2xl font-bold">${summary.grandTotal.toFixed(2)}</p>
+                    <div className="text-center p-3 bg-primary text-primary-foreground rounded-lg flex flex-col justify-center shadow-sm">
+                        <p className="text-[10px] sm:text-xs opacity-80 uppercase tracking-wider font-semibold">Grand Total</p>
+                        <p className="text-lg sm:text-2xl font-bold">${summary.grandTotal.toFixed(2)}</p>
                     </div>
-                    <div className="p-4 rounded-lg border space-y-3">
+                    <div className="p-3 rounded-lg border bg-background space-y-2">
                         <div className="space-y-1">
-                            <Label htmlFor="paymentGiven" className="text-xs uppercase tracking-wider font-semibold text-muted-foreground">Payment Given</Label>
+                            <Label htmlFor="paymentGiven" className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Payment Given</Label>
                             <Input id="paymentGiven" type="number" className="h-9" value={paymentGiven} onChange={(e) => setPaymentGiven(parseFloat(e.target.value) || 0)} />
                         </div>
-                        <p className="text-sm font-semibold flex justify-between">
-                            <span>Remaining:</span>
-                            <span className="text-destructive">${summary.remaining.toFixed(2)}</span>
-                        </p>
+                        <div className="flex justify-between items-center pt-1">
+                            <span className="text-xs font-semibold">Remaining:</span>
+                            <span className="text-sm font-bold text-destructive">${summary.remaining.toFixed(2)}</span>
+                        </div>
                     </div>
                 </CardContent>
             </Card>
