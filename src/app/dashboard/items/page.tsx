@@ -20,9 +20,6 @@ import {
   where,
   limit,
   runTransaction,
-  setDoc,
-  getDoc,
-  writeBatch,
 } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import {
@@ -57,7 +54,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { PlusCircle, Pencil, Loader2, UserPlus, Camera, Package } from 'lucide-react';
-import type { Item, Customer, CustomerBill } from '@/lib/types';
+import type { Item, Customer } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -305,7 +302,7 @@ export default function ItemsPage() {
         let billRef:any;
 
         if (openBillSnapshot.empty) {
-            billRef = doc(userBillsRef); // Prepare a new bill reference
+            billRef = doc(userBillsRef); 
         } else {
             billRef = openBillSnapshot.docs[0].ref;
         }
@@ -346,7 +343,7 @@ export default function ItemsPage() {
             });
             const paymentAmount = paymentGiven || 0;
 
-            // All writes must come after all reads
+            // Atomic logic for parent bill to satisfy "allow create" and "allow update" rules
             if (!billSnap.exists()) {
                 const customerData = customerSnap.data() as Customer;
                 const previousBalance = (customerData.totalCredit || 0) - (customerData.totalPaid || 0);
@@ -356,32 +353,36 @@ export default function ItemsPage() {
                     billNumber: Date.now().toString().slice(-6),
                     status: 'OPEN',
                     previousBalance: previousBalance,
-                    itemsTotal: 0,
-                    totalPaid: 0,
-                    grandTotal: previousBalance,
-                    remaining: previousBalance,
+                    itemsTotal: newItemsTotalForThisSale,
+                    totalPaid: paymentAmount,
+                    grandTotal: previousBalance + newItemsTotalForThisSale,
+                    remaining: (previousBalance + newItemsTotalForThisSale) - paymentAmount,
                     createdAt: serverTimestamp(),
+                    updatedAt: serverTimestamp(),
+                });
+            } else {
+                transaction.update(billRef, {
+                    itemsTotal: increment(newItemsTotalForThisSale),
+                    totalPaid: increment(paymentAmount),
+                    grandTotal: increment(newItemsTotalForThisSale),
+                    remaining: increment(newItemsTotalForThisSale - paymentAmount),
+                    updatedAt: serverTimestamp(),
                 });
             }
 
-            transaction.update(billRef, {
-                itemsTotal: increment(newItemsTotalForThisSale),
-                totalPaid: increment(paymentAmount),
-                grandTotal: increment(newItemsTotalForThisSale),
-                remaining: increment(newItemsTotalForThisSale - paymentAmount),
-                updatedAt: serverTimestamp(),
-            });
-
+            // Update item stocks
             for (let i = 0; i < saleItems.length; i++) {
                 transaction.update(itemRefs[i], { stockQty: increment(-saleItems[i].qty) });
             }
 
+            // Add sub-items (Rules now handle getAfter for parent creation in same transaction)
             const itemsSubcollectionRef = collection(billRef, 'items');
             for(const billItem of billItemsToAdd) {
                 const newItemRef = doc(itemsSubcollectionRef);
                 transaction.set(newItemRef, billItem);
             }
             
+            // Add sub-payments
             if (paymentAmount > 0) {
                 const paymentsSubcollectionRef = collection(billRef, 'payments');
                 const newPaymentRef = doc(paymentsSubcollectionRef);
@@ -392,6 +393,7 @@ export default function ItemsPage() {
                 });
             }
             
+            // Update customer totals
             transaction.update(customerRef, {
                 totalCredit: increment(newItemsTotalForThisSale),
                 totalPaid: increment(paymentAmount)
@@ -484,7 +486,7 @@ export default function ItemsPage() {
                     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                         <FormField control={form.control} name="name" render={({ field }) => ( <FormItem><FormLabel>Item Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />
                         <FormField control={form.control} name="purchasePrice" render={({ field }) => ( <FormItem><FormLabel>Purchase Price</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem> )} />
-                        <FormField control={form.control} name="salePrice" render={({ field }) => ( <FormItem><FormLabel>Sale Price</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem> )} />
+                        <FormField control={form.control} name="salePrice" render={({ field }) => ( <FormItem><FormLabel>Sale Price</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormMessage /></FormItem> )} />
                         <FormField control={form.control} name="stockQty" render={({ field }) => ( <FormItem><FormLabel>Stock Quantity</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem> )} />
                         <FormItem>
                             <FormLabel>Item Photo</FormLabel>

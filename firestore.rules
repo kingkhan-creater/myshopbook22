@@ -47,8 +47,13 @@ service cloud.firestore {
 
     match /users/{userId}/bills/{billId}/{sub}/{docId} {
       allow read: if isOwner(userId);
+      // Use getAfter to allow creating items/payments in the same transaction as the bill
       allow create, update: if isOwner(userId)
-        && billDoc(userId, billId).data.status == 'OPEN';
+        && (
+          (exists(/databases/$(database)/documents/users/$(userId)/bills/$(billId)) && get(/databases/$(database)/documents/users/$(userId)/bills/$(billId)).data.status == 'OPEN')
+          ||
+          (getAfter(/databases/$(database)/documents/users/$(userId)/bills/$(billId)).data.status == 'OPEN')
+        );
       allow delete: if false;
     }
 
