@@ -27,7 +27,7 @@ import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { ThumbsUp, Heart, MessageCircle, MoreHorizontal, Trash2, Laugh, Sparkles, Frown, Angry as AngryIcon, Send, Pencil, X, Globe, Users, Lock, Camera, Loader2, Maximize2 } from 'lucide-react';
+import { ThumbsUp, Heart, MessageCircle, MoreHorizontal, Trash2, Laugh, Sparkles, Frown, Angry as AngryIcon, Send, Pencil, X, Globe, Users, Lock, Camera, Loader2, Maximize2, Play, Pause } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
@@ -291,6 +291,9 @@ export function PostCard({ post }: { post: Post }) {
   const [editPostImageUrl, setEditPostImageUrl] = useState<string | null>(post.imageUrl || null);
   const [editPostPrivacy, setEditPostPrivacy] = useState<PostPrivacy>(post.privacy || 'public');
   const [isSavingEdit, setIsSavingEdit] = useState(false);
+  
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -555,6 +558,16 @@ export function PostCard({ post }: { post: Post }) {
     reader.readAsDataURL(file);
   };
 
+  const toggleVideoPlayback = () => {
+    if (!videoRef.current) return;
+    if (isVideoPlaying) {
+        videoRef.current.pause();
+    } else {
+        videoRef.current.play();
+    }
+    setIsVideoPlaying(!isVideoPlaying);
+  };
+
   const { totalReactions, topReactions, reactionsText } = useMemo(() => {
     const counts = { ...(post.reactionCounts || {}) };
     
@@ -612,7 +625,29 @@ export function PostCard({ post }: { post: Post }) {
       </CardHeader>
       <CardContent className="px-3 sm:px-4 py-0 pb-3">
         {post.text && <p className="text-sm whitespace-pre-wrap mb-3 leading-snug break-words">{post.text}</p>}
-        {post.imageUrl && (
+        
+        {post.videoUrl ? (
+            <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-black group">
+                <video 
+                    ref={videoRef}
+                    src={post.videoUrl} 
+                    className="w-full h-full object-contain"
+                    onPlay={() => setIsVideoPlaying(true)}
+                    onPause={() => setIsVideoPlaying(false)}
+                    onClick={toggleVideoPlayback}
+                />
+                {!isVideoPlaying && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/20 cursor-pointer pointer-events-none">
+                        <Play className="h-12 w-12 text-white fill-white drop-shadow-md" />
+                    </div>
+                )}
+                <div className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button variant="secondary" size="icon" className="h-8 w-8 rounded-full" onClick={toggleVideoPlayback}>
+                        {isVideoPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                    </Button>
+                </div>
+            </div>
+        ) : post.imageUrl && (
           <div 
             className="relative w-full aspect-video rounded-lg overflow-hidden -mx-3 sm:mx-0 sm:rounded-md bg-muted cursor-pointer group/photo"
             onClick={() => setIsPhotoViewerOpen(true)}

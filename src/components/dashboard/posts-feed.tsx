@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, where, limit, getDocs } from 'firebase/firestore';
@@ -9,11 +9,12 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Image as ImageIcon, Send, X, Globe, Users, Lock } from 'lucide-react';
+import { Loader2, Image as ImageIcon, Send, X, Globe, Users, Lock, Video } from 'lucide-react';
 import Image from 'next/image';
 import { PostCard } from './post-card';
 import { Skeleton } from '../ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { getCloudinarySignature } from '@/app/actions/cloudinary';
 
 
 function CreatePostForm() {
@@ -22,12 +23,18 @@ function CreatePostForm() {
   const [text, setText] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [videoPreview, setVideoPreview] = useState<string | null>(null);
   const [privacy, setPrivacy] = useState<PostPrivacy>('public');
-  const photoInputRef = React.useRef<HTMLInputElement>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
 
   const handlePhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+
+    setVideoFile(null);
+    setVideoPreview(null);
 
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -54,29 +61,61 @@ function CreatePostForm() {
     };
     reader.readAsDataURL(file);
   };
+
+  const handleVideoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setPhotoBase64(null);
+    setVideoFile(file);
+    setVideoPreview(URL.createObjectURL(file));
+  };
   
   const handleCreatePost = async () => {
-    if (!user || (!text.trim() && !photoBase64)) {
+    if (!user || (!text.trim() && !photoBase64 && !videoFile)) {
         toast({variant: 'destructive', title: 'Post cannot be empty.'});
         return;
     };
     setIsSaving(true);
     try {
+        let finalVideoUrl: string | null = null;
+
+        if (videoFile) {
+            const { signature, timestamp, cloudName, apiKey, folder } = await getCloudinarySignature('posts');
+            const formData = new FormData();
+            formData.append('file', videoFile);
+            formData.append('api_key', apiKey);
+            formData.append('timestamp', timestamp.toString());
+            formData.append('signature', signature);
+            formData.append('folder', folder);
+
+            const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/video/upload`, {
+                method: 'POST',
+                body: formData
+            });
+            if (!response.ok) throw new Error('Video upload failed');
+            const data = await response.json();
+            finalVideoUrl = data.secure_url;
+        }
+
         await addDoc(collection(db, 'posts'), {
             userId: user.uid,
             userName: profile?.fullName || user.displayName || 'Anonymous',
             userPhotoUrl: profile?.photoUrl || null,
             text: text.trim(),
             imageUrl: photoBase64,
+            videoUrl: finalVideoUrl,
             privacy: privacy,
             createdAt: serverTimestamp(),
             isDeleted: false,
             reactionCounts: {},
             commentCount: 0
         });
+        
         setText('');
         setPhotoBase64(null);
-        if(photoInputRef.current) photoInputRef.current.value = '';
+        setVideoFile(null);
+        setVideoPreview(null);
         toast({title: 'Post published!'});
     } catch(e: any) {
         console.error("Error creating post: ", e);
@@ -114,22 +153,36 @@ function CreatePostForm() {
         />
         {photoBase64 && (
             <div className="relative">
-                <Image src={photoBase64} alt="Preview" width={100} height={100} className="rounded-md border" />
-                <Button variant="destructive" size="icon" className="absolute top-1 right-1 h-6 w-6" onClick={() => setPhotoBase64(null)}>
+                <Image src={photoBase64} alt="Preview" width={150} height={150} className="rounded-md border object-cover" />
+                <Button variant="destructive" size="icon" className="absolute top-1 right-1 h-6 w-6 rounded-full" onClick={() => setPhotoBase64(null)}>
+                    <X className="h-4 w-4" />
+                </Button>
+            </div>
+        )}
+        {videoPreview && (
+            <div className="relative aspect-video rounded-md overflow-hidden bg-black/5 max-w-xs">
+                <video src={videoPreview} className="w-full h-full object-contain" autoPlay muted loop />
+                <Button variant="destructive" size="icon" className="absolute top-1 right-1 h-6 w-6 rounded-full" onClick={() => { setVideoFile(null); setVideoPreview(null); }}>
                     <X className="h-4 w-4" />
                 </Button>
             </div>
         )}
         <div className="flex justify-between items-center">
-            <Button variant="ghost" size="icon" onClick={() => photoInputRef.current?.click()}>
-                <ImageIcon className="h-5 w-5" />
-            </Button>
-            <Button onClick={handleCreatePost} disabled={isSaving} className="h-9 px-4 text-sm">
+            <div className="flex gap-2">
+                <Button variant="ghost" size="icon" onClick={() => photoInputRef.current?.click()} title="Add Photo">
+                    <ImageIcon className="h-5 w-5 text-green-600" />
+                </Button>
+                <Button variant="ghost" size="icon" onClick={() => videoInputRef.current?.click()} title="Add Video">
+                    <Video className="h-5 w-5 text-red-500" />
+                </Button>
+            </div>
+            <Button onClick={handleCreatePost} disabled={isSaving} className="h-9 px-4 text-sm font-bold">
                 {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
                 Post
             </Button>
         </div>
         <input type="file" ref={photoInputRef} onChange={handlePhotoChange} className="hidden" accept="image/*" />
+        <input type="file" ref={videoInputRef} onChange={handleVideoChange} className="hidden" accept="video/*" />
       </CardContent>
     </Card>
   );

@@ -165,6 +165,7 @@ export interface Post {
   userPhotoUrl?: string;
   text: string;
   imageUrl?: string;
+  videoUrl?: string;
   createdAt: Timestamp;
   isDeleted: boolean;
   reactionCounts?: { [key in ReactionType]?: number };
@@ -204,7 +205,8 @@ export interface Story {
   userId: string;
   userName: string;
   userPhotoUrl?: string;
-  imageUrl: string;
+  imageUrl?: string;
+  videoUrl?: string;
   text?: string;
   createdAt: Timestamp;
   expiresAt: Timestamp;
@@ -220,7 +222,8 @@ export interface MarketplaceItem {
   title: string;
   description: string;
   price: number;
-  imageUrl: string;
+  imageUrl?: string;
+  videoUrl?: string;
   status: 'ACTIVE' | 'SOLD';
   createdAt: Timestamp;
 }
