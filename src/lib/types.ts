@@ -208,6 +208,7 @@ export interface Story {
   text?: string;
   createdAt: Timestamp;
   expiresAt: Timestamp;
+  privacy?: PostPrivacy;
 }
 
 export interface MarketplaceItem {

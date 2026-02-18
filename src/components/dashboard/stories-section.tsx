@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useAuth } from '@/hooks/use-auth';
 import { db } from '@/lib/firebase';
 import { collection, query, where, orderBy, onSnapshot, getDocs, doc, addDoc, Timestamp } from 'firebase/firestore';
-import type { Story, PublicUserProfile } from '@/lib/types';
+import type { Story, PublicUserProfile, PostPrivacy } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { add } from 'date-fns';
 import Image from 'next/image';
@@ -17,13 +17,14 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
-import { PlusCircle, Loader2, Camera, X } from 'lucide-react';
+import { PlusCircle, Loader2, Camera, X, Globe, Users, Lock } from 'lucide-react';
 import {
   Carousel,
   type CarouselApi,
   CarouselContent,
   CarouselItem,
 } from "@/components/ui/carousel";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const getInitials = (name: string) => (name || '').substring(0, 2).toUpperCase();
 
@@ -33,6 +34,7 @@ const StoryCreator = ({ open, onOpenChange, onStoryCreated }: { open: boolean, o
     const { toast } = useToast();
     const [text, setText] = useState('');
     const [photoBase64, setPhotoBase64] = useState<string | null>(null);
+    const [privacy, setPrivacy] = useState<PostPrivacy>('public');
     const [isSaving, setIsSaving] = useState(false);
     const photoInputRef = useRef<HTMLInputElement>(null);
 
@@ -89,6 +91,7 @@ const StoryCreator = ({ open, onOpenChange, onStoryCreated }: { open: boolean, o
                 userPhotoUrl: userPhotoUrl || null,
                 imageUrl: photoBase64,
                 text: text.trim(),
+                privacy: privacy,
                 createdAt: Timestamp.fromDate(now),
                 expiresAt: Timestamp.fromDate(expiresAt),
             });
@@ -97,6 +100,7 @@ const StoryCreator = ({ open, onOpenChange, onStoryCreated }: { open: boolean, o
             onStoryCreated();
             setText('');
             setPhotoBase64(null);
+            setPrivacy('public');
             if (photoInputRef.current) photoInputRef.current.value = '';
         } catch (error: any) {
             console.error(error);
@@ -109,8 +113,38 @@ const StoryCreator = ({ open, onOpenChange, onStoryCreated }: { open: boolean, o
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent>
-                <DialogHeader><DialogTitle>Create a new Story</DialogTitle></DialogHeader>
+                <DialogHeader>
+                    <DialogTitle>Create a new Story</DialogTitle>
+                </DialogHeader>
                 <div className="space-y-4 py-4">
+                    <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                            <Avatar className="h-10 w-10">
+                                <AvatarImage src={user?.photoURL || undefined} />
+                                <AvatarFallback>{getInitials(user?.displayName || '')}</AvatarFallback>
+                            </Avatar>
+                            <p className="font-bold text-sm">{user?.displayName}</p>
+                        </div>
+                        <Select value={privacy} onValueChange={(v: any) => setPrivacy(v)}>
+                            <SelectTrigger className="h-8 w-fit gap-2">
+                                {privacy === 'public' && <Globe className="h-3 w-3" />}
+                                {privacy === 'friends' && <Users className="h-3 w-3" />}
+                                {privacy === 'private' && <Lock className="h-3 w-3" />}
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="public">
+                                    <div className="flex items-center gap-2"><Globe className="h-3 w-3" /> Public</div>
+                                </SelectItem>
+                                <SelectItem value="friends">
+                                    <div className="flex items-center gap-2"><Users className="h-3 w-3" /> Friends</div>
+                                </SelectItem>
+                                <SelectItem value="private">
+                                    <div className="flex items-center gap-2"><Lock className="h-3 w-3" /> Only Me</div>
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
                     <Textarea placeholder="Add a caption..." value={text} onChange={(e) => setText(e.target.value)} />
                     <div>
                         {photoBase64 ? (
@@ -148,10 +182,14 @@ const StoryViewer = ({ open, onOpenChange, userStories }: { open: boolean, onOpe
     // Sync current slide index
     useEffect(() => {
         if (!api) return;
-        api.on("select", () => {
+        const onSelect = () => {
             setCurrent(api.selectedScrollSnap());
             setProgress(0);
-        });
+        };
+        api.on("select", onSelect);
+        return () => {
+            api.off("select", onSelect);
+        }
     }, [api]);
     
     // Reset progress when opening or changing users
@@ -174,7 +212,7 @@ const StoryViewer = ({ open, onOpenChange, userStories }: { open: boolean, onOpe
         return () => clearInterval(interval);
     }, [open, api]);
 
-    // Handle auto-advance when progress hits 100
+    // Handle auto-advance when progress hits 100 using a separate effect to avoid state updates during render
     useEffect(() => {
         if (progress >= 100 && api) {
             if (api.canScrollNext()) {
@@ -264,14 +302,47 @@ const StoryViewer = ({ open, onOpenChange, userStories }: { open: boolean, onOpe
 export function StoriesSection() {
     const { user } = useAuth();
     const [storiesByUser, setStoriesByUser] = useState<Map<string, Story[]>>(new Map());
+    const [friendsIds, setFriendsIds] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
     const [isCreatorOpen, setIsCreatorOpen] = useState(false);
     const [viewingUser, setViewingUser] = useState<string | null>(null);
 
+    // Fetch accepted friends for privacy filtering
+    useEffect(() => {
+        if (!user) return;
+        const friendsQuery = query(
+            collection(db, 'friendships'),
+            where('users', 'array-contains', user.uid),
+            where('status', '==', 'accepted')
+        );
+        const unsub = onSnapshot(friendsQuery, (snap) => {
+            const ids = snap.docs.map(doc => {
+                const data = doc.data();
+                return data.users.find((uid: string) => uid !== user.uid);
+            });
+            setFriendsIds(ids);
+        });
+        return unsub;
+    }, [user]);
+
     useEffect(() => {
         const storiesQuery = query(collection(db, 'stories'), where('expiresAt', '>', new Date()), orderBy('expiresAt', 'desc'));
         const unsubscribe = onSnapshot(storiesQuery, (snapshot) => {
-            const fetchedStories = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Story));
+            const fetchedStories = snapshot.docs
+                .map(doc => ({ id: doc.id, ...doc.data() } as Story))
+                .filter(s => {
+                    if (!user) return s.privacy === 'public';
+                    
+                    const isOwner = s.userId === user.uid;
+                    const isFriend = friendsIds.includes(s.userId);
+                    const privacy = s.privacy || 'public';
+
+                    if (isOwner) return true;
+                    if (privacy === 'public') return true;
+                    if (privacy === 'friends' && isFriend) return true;
+                    
+                    return false;
+                });
             
             const grouped = new Map<string, Story[]>();
             fetchedStories.forEach(story => {
@@ -290,7 +361,7 @@ export function StoriesSection() {
         });
 
         return () => unsubscribe();
-    }, []);
+    }, [user, friendsIds]);
 
     const handleViewUserStories = (userId: string) => {
         setViewingUser(userId);
@@ -358,7 +429,9 @@ export function StoriesSection() {
 
             <StoryViewer 
                 open={!!viewingUser}
-                onOpenChange={(open) => !open && setViewingUser(null)}
+                onOpenChange={(open) => {
+                    if (!open) setViewingUser(null);
+                }}
                 userStories={viewingUser ? storiesByUser.get(viewingUser) || null : null}
             />
         </Card>
