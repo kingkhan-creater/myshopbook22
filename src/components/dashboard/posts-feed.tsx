@@ -123,15 +123,19 @@ export function PostsFeed() {
   const { toast } = useToast();
 
   useEffect(() => {
+    // Simplified query to avoid composite index requirement (isDeleted + createdAt)
+    // We fetch recent posts and filter isDeleted client-side.
     const postsQuery = query(
       collection(db, 'posts'), 
-      where('isDeleted', '==', false), 
       orderBy('createdAt', 'desc'),
-      limit(20)
+      limit(50)
     );
 
     const unsubscribe = onSnapshot(postsQuery, (snapshot) => {
-      const postsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Post));
+      const postsData = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() } as Post))
+        .filter(p => !p.isDeleted);
+      
       setPosts(postsData);
       setLoading(false);
     }, (error) => {

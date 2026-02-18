@@ -99,14 +99,17 @@ export default function CustomerLedgerPage() {
       }
     });
 
-    // Fetch customer bills
+    // Simplified query to avoid composite index requirement (customerId + createdAt)
     const billsQuery = query(
       collection(db, 'users', user.uid, 'bills'),
-      where('customerId', '==', customerId),
-      orderBy('createdAt', 'desc')
+      where('customerId', '==', customerId)
     );
     const unsubBills = onSnapshot(billsQuery, (snapshot) => {
-      setBills(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CustomerBill)));
+      const billsData = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() } as CustomerBill))
+        .sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
+      
+      setBills(billsData);
       setLoading(false);
     }, (error) => {
       console.error("Error fetching bills:", error);

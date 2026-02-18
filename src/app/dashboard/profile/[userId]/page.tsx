@@ -72,21 +72,22 @@ export default function UserProfilePage() {
       }
     });
 
-    // Fetch User Posts
+    // Fetch User Posts - Simplified query to avoid composite index requirement
+    // We filter isDeleted and sort by createdAt client-side
     const postsQuery = query(
       collection(db, 'posts'),
-      where('userId', '==', userId),
-      where('isDeleted', '==', false),
-      orderBy('createdAt', 'desc')
+      where('userId', '==', userId)
     );
+    
     const unsubPosts = onSnapshot(postsQuery, (snapshot) => {
-      setPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Post)));
+      const postsData = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() } as Post))
+        .filter(p => !p.isDeleted)
+        .sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
+      
+      setPosts(postsData);
+      setStats(prev => ({ ...prev, postCount: postsData.length }));
       setLoading(false);
-    });
-
-    // Fetch Stats (Post Count)
-    getCountFromServer(postsQuery).then(snap => {
-        setStats(prev => ({ ...prev, postCount: snap.data().count }));
     });
 
     // Fetch Friend Count & Status
@@ -96,9 +97,10 @@ export default function UserProfilePage() {
     });
 
     // Check Friendship Status with Current User
+    let unsubFriendship: (() => void) | null = null;
     if (user && !isMyProfile) {
         const friendshipId = [user.uid, userId].sort().join('_');
-        const unsubFriendship = onSnapshot(doc(db, 'friendships', friendshipId), (snap) => {
+        unsubFriendship = onSnapshot(doc(db, 'friendships', friendshipId), (snap) => {
             if (snap.exists()) {
                 const data = snap.data();
                 if (data.status === 'accepted') setFriendshipStatus('accepted');
@@ -109,12 +111,12 @@ export default function UserProfilePage() {
                 setFriendshipStatus('none');
             }
         });
-        return () => { unsubProfile(); unsubPosts(); unsubFriendship(); };
     }
 
     return () => {
       unsubProfile();
       unsubPosts();
+      if (unsubFriendship) unsubFriendship();
     };
   }, [userId, user, isMyProfile, router, toast]);
 

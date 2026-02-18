@@ -72,15 +72,18 @@ export default function SellerMarketplacePage() {
       }
     });
 
-    // Listen for seller's items
+    // Simplified query to avoid composite index requirement (sellerId + createdAt)
     const q = query(
       collection(db, 'marketplace'),
-      where('sellerId', '==', sellerId),
-      orderBy('createdAt', 'desc')
+      where('sellerId', '==', sellerId)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      setItems(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MarketplaceItem)));
+      const itemsData = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() } as MarketplaceItem))
+        .sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
+      
+      setItems(itemsData);
       setLoading(false);
     }, (error) => {
       console.error("Error fetching seller items:", error);

@@ -61,14 +61,18 @@ export default function MarketplacePage() {
 
   useEffect(() => {
     setLoading(true);
+    // Simplified query to avoid composite index requirement (status + createdAt)
     const q = query(
       collection(db, 'marketplace'),
-      where('status', '==', 'ACTIVE'),
       orderBy('createdAt', 'desc')
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      setItems(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MarketplaceItem)));
+      const itemsData = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() } as MarketplaceItem))
+        .filter(item => item.status === 'ACTIVE');
+      
+      setItems(itemsData);
       setLoading(false);
     }, (error) => {
       console.error("Error fetching marketplace items:", error);
