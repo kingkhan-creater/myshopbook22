@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { db } from '@/lib/firebase';
-import { collection, query, where, orderBy, onSnapshot, getDocs, doc, addDoc, Timestamp } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, getDocs, doc, addDoc, updateDoc, arrayUnion, Timestamp } from 'firebase/firestore';
 import type { Story, PublicUserProfile, PostPrivacy } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { add } from 'date-fns';
@@ -17,7 +17,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
-import { PlusCircle, Loader2, Camera, X, Globe, Users, Lock } from 'lucide-react';
+import { PlusCircle, Loader2, Camera, X, Globe, Users, Lock, Eye } from 'lucide-react';
 import {
   Carousel,
   type CarouselApi,
@@ -94,6 +94,7 @@ const StoryCreator = ({ open, onOpenChange, onStoryCreated }: { open: boolean, o
                 privacy: privacy,
                 createdAt: Timestamp.fromDate(now),
                 expiresAt: Timestamp.fromDate(expiresAt),
+                viewerIds: [],
             });
 
             toast({ title: 'Story posted!' });
@@ -175,9 +176,13 @@ const StoryCreator = ({ open, onOpenChange, onStoryCreated }: { open: boolean, o
 
 // --- Story Viewer Component (Dialog) ---
 const StoryViewer = ({ open, onOpenChange, userStories }: { open: boolean, onOpenChange: (open: boolean) => void, userStories: Story[] | null }) => {
+    const { user } = useAuth();
     const [api, setApi] = useState<CarouselApi>();
     const [current, setCurrent] = useState(0);
     const [progress, setProgress] = useState(0);
+    const [isViewerListOpen, setIsViewerListOpen] = useState(false);
+    const [viewerProfiles, setViewerProfiles] = useState<PublicUserProfile[]>([]);
+    const [loadingViewers, setLoadingViewers] = useState(false);
 
     // Sync current slide index
     useEffect(() => {
@@ -203,25 +208,77 @@ const StoryViewer = ({ open, onOpenChange, userStories }: { open: boolean, onOpe
 
     // Timer logic for progress bar
     useEffect(() => {
-        if (!open || !api) return;
+        if (!open || !api || isViewerListOpen) return;
 
         const interval = setInterval(() => {
             setProgress((prev) => (prev < 100 ? prev + 1 : 100));
         }, 50); // 5 seconds total per story (50ms * 100)
 
         return () => clearInterval(interval);
-    }, [open, api]);
+    }, [open, api, isViewerListOpen]);
 
-    // Handle auto-advance when progress hits 100 using a separate effect to avoid state updates during render
+    // Handle auto-advance when progress hits 100
     useEffect(() => {
-        if (progress >= 100 && api) {
+        if (progress >= 100 && api && !isViewerListOpen) {
             if (api.canScrollNext()) {
                 api.scrollNext();
             } else {
                 onOpenChange(false);
             }
         }
-    }, [progress, api, onOpenChange]);
+    }, [progress, api, onOpenChange, isViewerListOpen]);
+
+    // Track views
+    useEffect(() => {
+        if (!open || !userStories || !user || current === undefined) return;
+        const story = userStories[current];
+        if (!story) return;
+
+        // If it's not my story and I haven't viewed it yet
+        if (story.userId !== user.uid && (!story.viewerIds || !story.viewerIds.includes(user.uid))) {
+            const storyRef = doc(db, 'stories', story.id);
+            updateDoc(storyRef, {
+                viewerIds: arrayUnion(user.uid)
+            }).catch(e => console.error("Error updating story view:", e));
+        }
+    }, [current, open, userStories, user]);
+
+    // Fetch viewer profiles for the owner
+    const fetchViewerProfiles = async () => {
+        if (!userStories || current === undefined) return;
+        const story = userStories[current];
+        if (!story.viewerIds || story.viewerIds.length === 0) {
+            setViewerProfiles([]);
+            return;
+        }
+
+        setLoadingViewers(true);
+        try {
+            const profiles: PublicUserProfile[] = [];
+            // Batch fetch profiles (Firestore "in" limit is 30)
+            const viewerChunks = [];
+            for (let i = 0; i < story.viewerIds.length; i += 30) {
+                viewerChunks.push(story.viewerIds.slice(i, i + 30));
+            }
+
+            for (const chunk of viewerChunks) {
+                const q = query(collection(db, 'publicUsers'), where('__name__', 'in', chunk));
+                const snap = await getDocs(q);
+                snap.forEach(doc => profiles.push({ uid: doc.id, ...doc.data() } as PublicUserProfile));
+            }
+            setViewerProfiles(profiles);
+        } catch (error) {
+            console.error("Error fetching viewer profiles:", error);
+        } finally {
+            setLoadingViewers(false);
+        }
+    };
+
+    useEffect(() => {
+        if (isViewerListOpen) {
+            fetchViewerProfiles();
+        }
+    }, [isViewerListOpen]);
 
 
     if (!userStories || userStories.length === 0) return null;
@@ -230,70 +287,134 @@ const StoryViewer = ({ open, onOpenChange, userStories }: { open: boolean, onOpe
         name: userStories[0].userName, 
         photoUrl: userStories[0].userPhotoUrl 
     };
+    
+    const currentStory = userStories[current];
+    const isOwner = user?.uid === currentStory?.userId;
 
     return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="p-0 border-0 bg-black max-w-md h-full md:h-[90vh] md:max-h-[800px] flex flex-col focus:outline-none overflow-hidden">
-                 <DialogHeader className="sr-only">
-                    <DialogTitle>Story from {author.name}</DialogTitle>
-                 </DialogHeader>
-                 
-                 {/* Top Progress and Header Info */}
-                 <div className="absolute top-0 left-0 right-0 p-4 z-30 bg-gradient-to-b from-black/60 to-transparent">
-                    <div className="flex items-center gap-1.5 mb-3">
-                        {userStories.map((_, index) => (
-                            <Progress key={index} value={index === current ? progress : (index < current ? 100 : 0)} className="h-1 flex-1 bg-white/20" />
-                        ))}
-                    </div>
-                    <div className="flex items-center gap-3">
-                        <Avatar className="h-9 w-9 border border-white/50">
-                            <AvatarImage src={author.photoUrl ?? undefined} />
-                            <AvatarFallback>{getInitials(author.name)}</AvatarFallback>
-                        </Avatar>
-                        <p className="font-semibold text-white text-sm shadow-black drop-shadow-md">{author.name}</p>
-                    </div>
-                 </div>
-
-                {/* Main Content Carousel */}
-                <div className="relative flex-1 w-full h-full bg-black">
-                    <Carousel setApi={setApi} className="w-full h-full">
-                        <CarouselContent className="h-full">
-                            {userStories.map((story) => (
-                                <CarouselItem key={story.id} className="h-full relative">
-                                    <div className="relative w-full h-full flex items-center justify-center">
-                                       <Image 
-                                            src={story.imageUrl} 
-                                            alt={story.text || 'Story'} 
-                                            fill 
-                                            className="object-contain" 
-                                            priority
-                                        />
-                                       {story.text && (
-                                            <div className="absolute bottom-20 left-0 right-0 p-6 text-center z-10">
-                                                <p className="inline-block px-4 py-2 rounded-lg text-white text-base font-medium bg-black/50 backdrop-blur-sm">
-                                                    {story.text}
-                                                </p>
-                                            </div>
-                                       )}
-                                    </div>
-                                </CarouselItem>
+        <>
+            <Dialog open={open} onOpenChange={onOpenChange}>
+                <DialogContent className="p-0 border-0 bg-black max-w-md h-full md:h-[90vh] md:max-h-[800px] flex flex-col focus:outline-none overflow-hidden">
+                    <DialogHeader className="sr-only">
+                        <DialogTitle>Story from {author.name}</DialogTitle>
+                    </DialogHeader>
+                    
+                    {/* Top Progress and Header Info */}
+                    <div className="absolute top-0 left-0 right-0 p-4 z-30 bg-gradient-to-b from-black/60 to-transparent">
+                        <div className="flex items-center gap-1.5 mb-3">
+                            {userStories.map((_, index) => (
+                                <Progress key={index} value={index === current ? progress : (index < current ? 100 : 0)} className="h-1 flex-1 bg-white/20" />
                             ))}
-                        </CarouselContent>
-                        
-                        {/* Interaction Layers */}
-                        <div className="absolute inset-0 flex z-20">
-                             <button onClick={() => api?.scrollPrev()} className="h-full w-1/3 cursor-pointer" aria-label="Previous story" />
-                             <button className="h-full w-1/3 cursor-default" />
-                             <button onClick={() => api?.scrollNext()} className="h-full w-1/3 cursor-pointer" aria-label="Next story" />
                         </div>
-                    </Carousel>
-                </div>
+                        <div className="flex items-center gap-3">
+                            <Avatar className="h-9 w-9 border border-white/50">
+                                <AvatarImage src={author.photoUrl ?? undefined} />
+                                <AvatarFallback>{getInitials(author.name)}</AvatarFallback>
+                            </Avatar>
+                            <p className="font-semibold text-white text-sm shadow-black drop-shadow-md">{author.name}</p>
+                        </div>
+                    </div>
 
-                <DialogClose className="absolute right-4 top-12 z-40 rounded-full bg-black/40 p-2 text-white hover:bg-black/60 transition-colors">
-                    <X className="h-5 w-5" />
-                </DialogClose>
-            </DialogContent>
-        </Dialog>
+                    {/* Main Content Carousel */}
+                    <div className="relative flex-1 w-full h-full bg-black">
+                        <Carousel setApi={setApi} className="w-full h-full">
+                            <CarouselContent className="h-full">
+                                {userStories.map((story) => (
+                                    <CarouselItem key={story.id} className="h-full relative">
+                                        <div className="relative w-full h-full flex items-center justify-center">
+                                        <Image 
+                                                src={story.imageUrl} 
+                                                alt={story.text || 'Story'} 
+                                                fill 
+                                                className="object-contain" 
+                                                priority
+                                            />
+                                        {story.text && (
+                                                <div className="absolute bottom-32 left-0 right-0 p-6 text-center z-10">
+                                                    <p className="inline-block px-4 py-2 rounded-lg text-white text-base font-medium bg-black/50 backdrop-blur-sm">
+                                                        {story.text}
+                                                    </p>
+                                                </div>
+                                        )}
+                                        </div>
+                                    </CarouselItem>
+                                ))}
+                            </CarouselContent>
+                            
+                            {/* Interaction Layers */}
+                            <div className="absolute inset-0 flex z-20">
+                                <button onClick={() => api?.scrollPrev()} className="h-full w-1/3 cursor-pointer" aria-label="Previous story" />
+                                <button className="h-full w-1/3 cursor-default" />
+                                <button onClick={() => api?.scrollNext()} className="h-full w-1/3 cursor-pointer" aria-label="Next story" />
+                            </div>
+                        </Carousel>
+                    </div>
+
+                    {/* Footer - Viewer Info for Owner */}
+                    {isOwner && currentStory && (
+                        <div className="absolute bottom-0 left-0 right-0 p-6 z-30 flex justify-center bg-gradient-to-t from-black/60 to-transparent">
+                            <Button 
+                                variant="ghost" 
+                                className="text-white hover:bg-white/20 gap-2"
+                                onClick={() => setIsViewerListOpen(true)}
+                            >
+                                <Eye className="h-4 w-4" />
+                                <span className="font-bold">
+                                    {currentStory.viewerIds?.length || 0} {currentStory.viewerIds?.length === 1 ? 'view' : 'views'}
+                                </span>
+                            </Button>
+                        </div>
+                    )}
+
+                    <DialogClose className="absolute right-4 top-12 z-40 rounded-full bg-black/40 p-2 text-white hover:bg-black/60 transition-colors">
+                        <X className="h-5 w-5" />
+                    </DialogClose>
+                </DialogContent>
+            </Dialog>
+
+            {/* Viewer List Dialog */}
+            <Dialog open={isViewerListOpen} onOpenChange={setIsViewerListOpen}>
+                <DialogContent className="max-w-md h-[60vh] flex flex-col p-0">
+                    <DialogHeader className="p-4 border-b">
+                        <DialogTitle className="flex items-center gap-2">
+                            <Eye className="h-5 w-5" />
+                            Story Viewers
+                        </DialogTitle>
+                    </DialogHeader>
+                    <ScrollArea className="flex-1 p-2">
+                        {loadingViewers ? (
+                            <div className="p-4 space-y-4">
+                                <Skeleton className="h-12 w-full" />
+                                <Skeleton className="h-12 w-full" />
+                                <Skeleton className="h-12 w-full" />
+                            </div>
+                        ) : viewerProfiles.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center h-40 text-muted-foreground italic">
+                                <p>No viewers yet.</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-1">
+                                {viewerProfiles.map(profile => (
+                                    <div key={profile.uid} className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted transition-colors">
+                                        <Avatar className="h-10 w-10">
+                                            <AvatarImage src={profile.photoUrl} />
+                                            <AvatarFallback>{getInitials(profile.fullName)}</AvatarFallback>
+                                        </Avatar>
+                                        <div className="flex flex-col">
+                                            <p className="font-bold text-sm">{profile.fullName}</p>
+                                            {profile.shopName && <p className="text-xs text-muted-foreground">{profile.shopName}</p>}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </ScrollArea>
+                    <DialogFooter className="p-4 border-t">
+                        <DialogClose asChild><Button variant="secondary" className="w-full">Close</Button></DialogClose>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        </> author.name
     );
 };
 
