@@ -28,6 +28,16 @@ import Link from 'next/link';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogClose,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 const getInitials = (name: string) => (name || '').substring(0, 2).toUpperCase();
 
@@ -50,7 +60,13 @@ export default function UserProfilePage() {
   const [newBio, setNewBio] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   
+  // Edit Profile State
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editShopName, setEditShopName] = useState('');
+  
   const coverInputRef = useRef<HTMLInputElement>(null);
+  const profilePhotoInputRef = useRef<HTMLInputElement>(null);
 
   const isMyProfile = user?.uid === userId;
 
@@ -66,6 +82,8 @@ export default function UserProfilePage() {
         const data = docSnap.data() as PublicUserProfile;
         setTargetProfile({ uid: docSnap.id, ...data });
         setNewBio(data.bio || '');
+        setEditName(data.fullName || '');
+        setEditShopName(data.shopName || '');
       } else {
         toast({ variant: 'destructive', title: 'User not found' });
         router.push('/dashboard/friends');
@@ -137,6 +155,27 @@ export default function UserProfilePage() {
     }
   };
 
+  const handleSaveProfile = async () => {
+    if (!user || !isMyProfile) return;
+    setIsSaving(true);
+    try {
+        const publicRef = doc(db, 'publicUsers', user.uid);
+        const privateRef = doc(db, 'users', user.uid);
+        const updates = {
+            fullName: editName.trim(),
+            shopName: editShopName.trim(),
+        };
+        await updateDoc(publicRef, updates);
+        await updateDoc(privateRef, updates);
+        setIsEditProfileOpen(false);
+        toast({ title: 'Profile updated!' });
+    } catch (e) {
+        toast({ variant: 'destructive', title: 'Error updating profile' });
+    } finally {
+        setIsSaving(false);
+    }
+  };
+
   const handleCoverPhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user || !isMyProfile) return;
@@ -168,6 +207,48 @@ export default function UserProfilePage() {
                 toast({ title: 'Cover photo updated!' });
             } catch (error) {
                 toast({ variant: 'destructive', title: 'Error uploading cover photo' });
+            }
+        };
+        img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleProfilePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user || !isMyProfile) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        const img = new (window.Image)();
+        img.onload = async () => {
+            const canvas = document.createElement('canvas');
+            const MAX_WIDTH = 400;
+            let width = img.width;
+            let height = img.height;
+            
+            const size = Math.min(width, height);
+            canvas.width = MAX_WIDTH;
+            canvas.height = MAX_WIDTH;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+
+            ctx.drawImage(
+                img, 
+                (width - size) / 2, (height - size) / 2, size, size, 
+                0, 0, MAX_WIDTH, MAX_WIDTH
+            );
+            
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+
+            try {
+                const publicRef = doc(db, 'publicUsers', user.uid);
+                const privateRef = doc(db, 'users', user.uid);
+                await updateDoc(publicRef, { photoUrl: dataUrl });
+                await updateDoc(privateRef, { photoUrl: dataUrl });
+                toast({ title: 'Profile photo updated!' });
+            } catch (error) {
+                toast({ variant: 'destructive', title: 'Error uploading profile photo' });
             }
         };
         img.src = event.target?.result as string;
@@ -237,9 +318,17 @@ export default function UserProfilePage() {
                         <AvatarFallback className="text-4xl">{getInitials(targetProfile?.fullName || '')}</AvatarFallback>
                     </Avatar>
                     {isMyProfile && (
-                        <Button variant="secondary" size="icon" className="absolute bottom-2 right-2 rounded-full h-8 w-8 shadow-md">
-                            <Camera className="h-4 w-4" />
-                        </Button>
+                        <>
+                            <Button 
+                                variant="secondary" 
+                                size="icon" 
+                                className="absolute bottom-2 right-2 rounded-full h-8 w-8 shadow-md"
+                                onClick={() => profilePhotoInputRef.current?.click()}
+                            >
+                                <Camera className="h-4 w-4" />
+                            </Button>
+                            <input type="file" ref={profilePhotoInputRef} onChange={handleProfilePhotoChange} className="hidden" accept="image/*" />
+                        </>
                     )}
                 </div>
                 <div className="flex-1 text-center md:text-left pb-2">
@@ -253,7 +342,7 @@ export default function UserProfilePage() {
                 </div>
                 <div className="flex gap-2 pb-2">
                     {isMyProfile ? (
-                        <Button variant="secondary" className="font-bold">
+                        <Button variant="secondary" className="font-bold" onClick={() => setIsEditProfileOpen(true)}>
                             <Pencil className="mr-2 h-4 w-4" /> Edit Profile
                         </Button>
                     ) : (
@@ -359,6 +448,31 @@ export default function UserProfilePage() {
             </div>
         </div>
       </div>
+
+      {/* Edit Profile Dialog */}
+      <Dialog open={isEditProfileOpen} onOpenChange={setIsEditProfileOpen}>
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Edit Profile</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                    <Label htmlFor="name">Full Name</Label>
+                    <Input id="name" value={editName} onChange={(e) => setEditName(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                    <Label htmlFor="shop">Shop Name</Label>
+                    <Input id="shop" value={editShopName} onChange={(e) => setEditShopName(e.target.value)} />
+                </div>
+            </div>
+            <DialogFooter>
+                <DialogClose asChild><Button variant="ghost">Cancel</Button></DialogClose>
+                <Button onClick={handleSaveProfile} disabled={isSaving}>
+                    {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Changes
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
