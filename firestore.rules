@@ -10,10 +10,6 @@ service cloud.firestore {
       return isAuth() && request.auth.uid == userId;
     }
 
-    function billDoc(userId, billId) {
-      return get(/databases/$(database)/documents/users/$(userId)/bills/$(billId));
-    }
-
     /* ================= USERS ================= */
     match /users/{userId} {
       allow read, write: if isOwner(userId);
@@ -24,7 +20,6 @@ service cloud.firestore {
     }
 
     /* ================= PUBLIC USERS ================= */
-    // Public profiles must be readable by all authenticated users for discovery/search
     match /publicUsers/{userId} {
       allow read: if isAuth();
       allow write: if isOwner(userId);
@@ -47,7 +42,8 @@ service cloud.firestore {
 
     match /users/{userId}/bills/{billId}/{sub}/{docId} {
       allow read: if isOwner(userId);
-      // Use getAfter to allow creating items/payments in the same transaction as the bill
+      
+      // Use getAfter to allow creating items/payments in the same transaction as the parent bill
       allow create, update: if isOwner(userId)
         && (
           (exists(/databases/$(database)/documents/users/$(userId)/bills/$(billId)) && get(/databases/$(database)/documents/users/$(userId)/bills/$(billId)).data.status == 'OPEN')
@@ -64,10 +60,8 @@ service cloud.firestore {
         && request.resource.data.userId == request.auth.uid;
 
       allow update: if isAuth() && (
-        // Post author can update anything (text, imageUrl, etc.)
         (resource.data.userId == request.auth.uid)
         ||
-        // Others can ONLY update reactionCounts and commentCount (for Liking/Commenting)
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactionCounts', 'commentCount']))
       );
 
@@ -86,17 +80,13 @@ service cloud.firestore {
         && request.resource.data.userId == request.auth.uid;
       
       allow update: if isAuth() && (
-        // Only comment owner can edit the text or metadata
         (resource.data.userId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasAny(['text', 'updatedAt', 'isEdited']))
         ||
-        // Anyone can update the likeCount if comment likes are implemented
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likeCount']))
       );
 
       allow delete: if isAuth() && (
-        // Comment owner can delete
         resource.data.userId == request.auth.uid || 
-        // Post owner can delete any comment on their post
         get(/databases/$(database)/documents/posts/$(postId)).data.userId == request.auth.uid
       );
     }
@@ -111,9 +101,9 @@ service cloud.firestore {
       allow read: if isAuth();
       allow create: if isAuth() && request.resource.data.userId == request.auth.uid;
       allow update: if isAuth() && (
-        (resource.data.userId == request.auth.uid) // Owner can update everything
+        (resource.data.userId == request.auth.uid)
         ||
-        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewerIds'])) // Others can only record views
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewerIds']))
       );
       allow delete: if isAuth() && resource.data.userId == request.auth.uid;
     }
@@ -128,7 +118,6 @@ service cloud.firestore {
 
     /* ================= FRIENDS ================= */
     match /friendships/{id} {
-      // Allow reading if document doesn't exist (existence check), or if participant, or if accepted
       allow read: if isAuth() && (
         resource == null
         || request.auth.uid in resource.data.get('users', [])
@@ -161,13 +150,11 @@ service cloud.firestore {
       allow read: if isMemberOfParentChat() && (resource.data.get('deletedFor', [])).hasAny([request.auth.uid]) == false;
       allow create: if isMemberOfParentChat() && request.resource.data.senderId == request.auth.uid;
       allow update: if isMemberOfParentChat() && (
-        // "Delete for me"
         (
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deletedFor']) &&
           request.resource.data.deletedFor == resource.data.get('deletedFor', []).concat([request.auth.uid])
         )
         ||
-        // "Delete for everyone" (Only sender)
         (
           resource.data.senderId == request.auth.uid &&
           request.resource.data.deletedForEveryone == true
