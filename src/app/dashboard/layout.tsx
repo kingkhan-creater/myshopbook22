@@ -25,6 +25,7 @@ import { auth, db } from '@/lib/firebase';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { DashboardNav } from '@/components/dashboard-nav';
+import Link from 'next/link';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -202,14 +203,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-56" align="end" forceMount>
-              <DropdownMenuLabel className="font-normal">
-                <div className="flex flex-col space-y-1">
+              <DropdownMenuItem asChild className="cursor-pointer focus:bg-accent focus:text-accent-foreground">
+                <Link href={`/dashboard/profile/${user.uid}`} className="flex flex-col space-y-1 w-full items-start p-2">
                   <p className="text-sm font-medium leading-none">{user.displayName || 'My Account'}</p>
                   <p className="text-xs leading-none text-muted-foreground">
                     {user.email}
                   </p>
-                </div>
-              </DropdownMenuLabel>
+                </Link>
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
                <DropdownMenuItem onClick={handlePhotoUploadClick} className="cursor-pointer">
                 <UserIcon className="mr-2 h-4 w-4" />
