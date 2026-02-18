@@ -156,6 +156,7 @@ export interface Reaction {
   createdAt: Timestamp;
 }
 
+export type PostPrivacy = 'public' | 'friends' | 'private';
 
 export interface Post {
   id: string;
@@ -168,6 +169,7 @@ export interface Post {
   isDeleted: boolean;
   reactionCounts?: { [key in ReactionType]?: number };
   commentCount: number; // Denormalized for feed view
+  privacy?: PostPrivacy;
 }
 
 export interface Comment {

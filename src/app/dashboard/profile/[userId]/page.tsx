@@ -51,6 +51,7 @@ export default function UserProfilePage() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ postCount: 0, friendCount: 0 });
+  const [friendsIds, setFriendsIds] = useState<string[]>([]);
   
   // Friendship status state
   const [friendshipStatus, setFriendshipStatus] = useState<'none' | 'pending' | 'accepted' | 'requested'>('none');
@@ -69,6 +70,24 @@ export default function UserProfilePage() {
   const profilePhotoInputRef = useRef<HTMLInputElement>(null);
 
   const isMyProfile = user?.uid === userId;
+
+  // Fetch accepted friends for privacy filtering
+  useEffect(() => {
+    if (!user) return;
+    const friendsQuery = query(
+        collection(db, 'friendships'),
+        where('users', 'array-contains', user.uid),
+        where('status', '==', 'accepted')
+    );
+    const unsub = onSnapshot(friendsQuery, (snap) => {
+        const ids = snap.docs.map(doc => {
+            const data = doc.data();
+            return data.users.find((uid: string) => uid !== user.uid);
+        });
+        setFriendsIds(ids);
+    });
+    return unsub;
+  }, [user]);
 
   useEffect(() => {
     if (!userId) return;
@@ -90,8 +109,7 @@ export default function UserProfilePage() {
       }
     });
 
-    // Fetch User Posts - Simplified query to avoid composite index requirement
-    // We filter isDeleted and sort by createdAt client-side
+    // Fetch User Posts
     const postsQuery = query(
       collection(db, 'posts'),
       where('userId', '==', userId)
@@ -100,7 +118,16 @@ export default function UserProfilePage() {
     const unsubPosts = onSnapshot(postsQuery, (snapshot) => {
       const postsData = snapshot.docs
         .map(doc => ({ id: doc.id, ...doc.data() } as Post))
-        .filter(p => !p.isDeleted)
+        .filter(p => {
+            if (p.isDeleted) return false;
+            if (isMyProfile) return true;
+            
+            const privacy = p.privacy || 'public';
+            if (privacy === 'public') return true;
+            if (privacy === 'friends' && user && friendsIds.includes(p.userId)) return true;
+            
+            return false;
+        })
         .sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
       
       setPosts(postsData);
@@ -136,7 +163,7 @@ export default function UserProfilePage() {
       unsubPosts();
       if (unsubFriendship) unsubFriendship();
     };
-  }, [userId, user, isMyProfile, router, toast]);
+  }, [userId, user, isMyProfile, router, toast, friendsIds]);
 
   const handleUpdateBio = async () => {
     if (!user || !isMyProfile) return;

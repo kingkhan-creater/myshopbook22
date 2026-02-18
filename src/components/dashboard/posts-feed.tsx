@@ -1,18 +1,19 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, where, limit } from 'firebase/firestore';
-import type { Post } from '@/lib/types';
+import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, where, limit, getDocs } from 'firebase/firestore';
+import type { Post, PostPrivacy } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Image as ImageIcon, Send, X } from 'lucide-react';
+import { Loader2, Image as ImageIcon, Send, X, Globe, Users, Lock } from 'lucide-react';
 import Image from 'next/image';
 import { PostCard } from './post-card';
 import { Skeleton } from '../ui/skeleton';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 
 function CreatePostForm() {
@@ -21,6 +22,7 @@ function CreatePostForm() {
   const [text, setText] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
+  const [privacy, setPrivacy] = useState<PostPrivacy>('public');
   const photoInputRef = React.useRef<HTMLInputElement>(null);
 
   const handlePhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -62,10 +64,11 @@ function CreatePostForm() {
     try {
         await addDoc(collection(db, 'posts'), {
             userId: user.uid,
-            userName: user.displayName || 'Anonymous',
+            userName: profile?.fullName || user.displayName || 'Anonymous',
             userPhotoUrl: profile?.photoUrl || null,
             text: text.trim(),
             imageUrl: photoBase64,
+            privacy: privacy,
             createdAt: serverTimestamp(),
             isDeleted: false,
             reactionCounts: {},
@@ -86,6 +89,22 @@ function CreatePostForm() {
   return (
     <Card className="mb-4 sm:mb-6">
       <CardContent className="p-3 sm:p-4 space-y-4">
+        <div className="flex items-center gap-2 mb-2">
+            <p className="font-bold text-sm">{profile?.fullName || user?.displayName}</p>
+            <Select value={privacy} onValueChange={(v: any) => setPrivacy(v)}>
+                <SelectTrigger className="h-7 px-2 text-xs bg-muted border-none w-auto gap-1">
+                    {privacy === 'public' && <Globe className="h-3 w-3" />}
+                    {privacy === 'friends' && <Users className="h-3 w-3" />}
+                    {privacy === 'private' && <Lock className="h-3 w-3" />}
+                    <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="public"><div className="flex items-center gap-2"><Globe className="h-3 w-3" /> Public</div></SelectItem>
+                    <SelectItem value="friends"><div className="flex items-center gap-2"><Users className="h-3 w-3" /> Friends</div></SelectItem>
+                    <SelectItem value="private"><div className="flex items-center gap-2"><Lock className="h-3 w-3" /> Only Me</div></SelectItem>
+                </SelectContent>
+            </Select>
+        </div>
         <Textarea
           placeholder={`What's on your mind, ${user?.displayName || 'User'}?`}
           value={text}
@@ -118,13 +137,31 @@ function CreatePostForm() {
 
 
 export function PostsFeed() {
+  const { user } = useAuth();
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
+  const [friendsIds, setFriendsIds] = useState<string[]>([]);
   const { toast } = useToast();
 
+  // Fetch accepted friends list for privacy filtering
   useEffect(() => {
-    // Simplified query to avoid composite index requirement (isDeleted + createdAt)
-    // We fetch recent posts and filter isDeleted client-side.
+    if (!user) return;
+    const friendsQuery = query(
+        collection(db, 'friendships'),
+        where('users', 'array-contains', user.uid),
+        where('status', '==', 'accepted')
+    );
+    const unsub = onSnapshot(friendsQuery, (snap) => {
+        const ids = snap.docs.map(doc => {
+            const data = doc.data();
+            return data.users.find((uid: string) => uid !== user.uid);
+        });
+        setFriendsIds(ids);
+    });
+    return unsub;
+  }, [user]);
+
+  useEffect(() => {
     const postsQuery = query(
       collection(db, 'posts'), 
       orderBy('createdAt', 'desc'),
@@ -134,7 +171,21 @@ export function PostsFeed() {
     const unsubscribe = onSnapshot(postsQuery, (snapshot) => {
       const postsData = snapshot.docs
         .map(doc => ({ id: doc.id, ...doc.data() } as Post))
-        .filter(p => !p.isDeleted);
+        .filter(p => {
+            if (p.isDeleted) return false;
+            if (!user) return p.privacy === 'public';
+            
+            // Privacy Logic
+            const isOwner = p.userId === user.uid;
+            const isFriend = friendsIds.includes(p.userId);
+            const privacy = p.privacy || 'public';
+
+            if (isOwner) return true;
+            if (privacy === 'public') return true;
+            if (privacy === 'friends' && isFriend) return true;
+            
+            return false;
+        });
       
       setPosts(postsData);
       setLoading(false);
@@ -145,7 +196,7 @@ export function PostsFeed() {
     });
 
     return () => unsubscribe();
-  }, [toast]);
+  }, [user, friendsIds, toast]);
 
   return (
     <div className="max-w-2xl mx-auto w-full">
