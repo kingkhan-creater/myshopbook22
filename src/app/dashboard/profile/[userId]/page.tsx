@@ -12,7 +12,10 @@ import {
   onSnapshot,
   getDoc,
   updateDoc,
+  setDoc,
+  deleteDoc,
   getCountFromServer,
+  serverTimestamp,
 } from 'firebase/firestore';
 import type { Post, PublicUserProfile } from '@/lib/types';
 import { useRouter } from 'next/navigation';
@@ -21,7 +24,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Camera, Pencil, MessageSquare, UserPlus, Check, Loader2, ArrowLeft } from 'lucide-react';
+import { Camera, Pencil, MessageSquare, UserPlus, Check, Loader2, ArrowLeft, MoreVertical, UserMinus, Ban, UserX, X } from 'lucide-react';
 import { PostCard } from '@/components/dashboard/post-card';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -36,6 +39,12 @@ import {
   DialogFooter,
   DialogClose,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
@@ -43,7 +52,6 @@ const getInitials = (name: string) => (name || '').substring(0, 2).toUpperCase()
 
 export default function UserProfilePage(props: { params: Promise<{ userId: string }>, searchParams: Promise<{ [key: string]: string | string[] | undefined }> }) {
   const { userId } = use(props.params);
-  // Unwrap searchParams to satisfy dynamic API proxy
   use(props.searchParams);
 
   const { user, profile: myProfile } = useAuth();
@@ -56,15 +64,13 @@ export default function UserProfilePage(props: { params: Promise<{ userId: strin
   const [stats, setStats] = useState({ postCount: 0, friendCount: 0 });
   const [friendsIds, setFriendsIds] = useState<string[]>([]);
   
-  // Friendship status state
-  const [friendshipStatus, setFriendshipStatus] = useState<'none' | 'pending' | 'accepted' | 'requested'>('none');
+  const [friendshipStatus, setFriendshipStatus] = useState<'none' | 'pending' | 'accepted' | 'requested' | 'blocked'>('none');
+  const [blockedBy, setBlockedBy] = useState<string | null>(null);
 
-  // Editing state
   const [isEditingBio, setIsEditingBio] = useState(false);
   const [newBio, setNewBio] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   
-  // Edit Profile State
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [editName, setEditName] = useState('');
   const [editShopName, setEditShopName] = useState('');
@@ -74,7 +80,6 @@ export default function UserProfilePage(props: { params: Promise<{ userId: strin
 
   const isMyProfile = user?.uid === userId;
 
-  // Fetch accepted friends for privacy filtering
   useEffect(() => {
     if (!user) return;
     const friendsQuery = query(
@@ -97,7 +102,6 @@ export default function UserProfilePage(props: { params: Promise<{ userId: strin
 
     setLoading(true);
 
-    // Fetch Target Profile
     const profileRef = doc(db, 'publicUsers', userId);
     const unsubProfile = onSnapshot(profileRef, (docSnap) => {
       if (docSnap.exists()) {
@@ -112,7 +116,6 @@ export default function UserProfilePage(props: { params: Promise<{ userId: strin
       }
     });
 
-    // Fetch User Posts
     const postsQuery = query(
       collection(db, 'posts'),
       where('userId', '==', userId)
@@ -138,13 +141,11 @@ export default function UserProfilePage(props: { params: Promise<{ userId: strin
       setLoading(false);
     });
 
-    // Fetch Friend Count & Status
     const friendsQuery = query(collection(db, 'friendships'), where('users', 'array-contains', userId), where('status', '==', 'accepted'));
     getCountFromServer(friendsQuery).then(snap => {
         setStats(prev => ({ ...prev, friendCount: snap.data().count }));
     });
 
-    // Check Friendship Status with Current User
     let unsubFriendship: (() => void) | null = null;
     if (user && !isMyProfile) {
         const friendshipId = [user.uid, userId].sort().join('_');
@@ -154,6 +155,11 @@ export default function UserProfilePage(props: { params: Promise<{ userId: strin
                 if (data.status === 'accepted') setFriendshipStatus('accepted');
                 else if (data.status === 'pending') {
                     setFriendshipStatus(data.requestedBy === user.uid ? 'pending' : 'requested');
+                } else if (data.status === 'blocked') {
+                    setFriendshipStatus('blocked');
+                    setBlockedBy(data.blockedBy);
+                } else {
+                    setFriendshipStatus('none');
                 }
             } else {
                 setFriendshipStatus('none');
@@ -203,6 +209,73 @@ export default function UserProfilePage(props: { params: Promise<{ userId: strin
         toast({ variant: 'destructive', title: 'Error updating profile' });
     } finally {
         setIsSaving(false);
+    }
+  };
+
+  const handleAddFriend = async () => {
+    if (!user || isMyProfile || !targetProfile) return;
+    const friendshipId = [user.uid, targetProfile.uid].sort().join('_');
+    try {
+        await setDoc(doc(db, 'friendships', friendshipId), {
+            users: [user.uid, targetProfile.uid],
+            status: 'pending',
+            requestedBy: user.uid,
+            createdAt: serverTimestamp(),
+        });
+        toast({ title: 'Friend request sent!' });
+    } catch (e) {
+        toast({ variant: 'destructive', title: 'Error', description: 'Could not send friend request.' });
+    }
+  };
+
+  const handleAcceptRequest = async () => {
+    if (!user || !targetProfile) return;
+    const friendshipId = [user.uid, targetProfile.uid].sort().join('_');
+    try {
+        await updateDoc(doc(db, 'friendships', friendshipId), { status: 'accepted' });
+        toast({ title: 'Friend request accepted!' });
+    } catch (e) {
+        toast({ variant: 'destructive', title: 'Error' });
+    }
+  };
+
+  const handleUnfriend = async () => {
+    if (!user || !targetProfile) return;
+    if (!window.confirm(`Are you sure you want to unfriend ${targetProfile.fullName}?`)) return;
+    const friendshipId = [user.uid, targetProfile.uid].sort().join('_');
+    try {
+        await deleteDoc(doc(db, 'friendships', friendshipId));
+        toast({ title: 'Unfriended successfully.' });
+    } catch (e) {
+        toast({ variant: 'destructive', title: 'Error' });
+    }
+  };
+
+  const handleBlockUser = async () => {
+    if (!user || !targetProfile) return;
+    if (!window.confirm(`Block ${targetProfile.fullName}? You will no longer see each other's content.`)) return;
+    const friendshipId = [user.uid, targetProfile.uid].sort().join('_');
+    try {
+        await setDoc(doc(db, 'friendships', friendshipId), {
+            users: [user.uid, targetProfile.uid],
+            status: 'blocked',
+            blockedBy: user.uid,
+            createdAt: serverTimestamp(),
+        });
+        toast({ title: 'User blocked.' });
+    } catch (e) {
+        toast({ variant: 'destructive', title: 'Error' });
+    }
+  };
+
+  const handleCancelRequest = async () => {
+    if (!user || !targetProfile) return;
+    const friendshipId = [user.uid, targetProfile.uid].sort().join('_');
+    try {
+        await deleteDoc(doc(db, 'friendships', friendshipId));
+        toast({ title: 'Request canceled.' });
+    } catch (e) {
+        toast({ variant: 'destructive', title: 'Error' });
     }
   };
 
@@ -308,6 +381,21 @@ export default function UserProfilePage(props: { params: Promise<{ userId: strin
     );
   }
 
+  if (friendshipStatus === 'blocked') {
+      return (
+          <div className="container mx-auto p-12 text-center">
+              <div className="bg-background rounded-xl p-12 shadow-sm border space-y-4">
+                  <UserX className="h-16 w-16 mx-auto text-muted-foreground" />
+                  <h1 className="text-2xl font-bold">User Unavailable</h1>
+                  <p className="text-muted-foreground">This profile is no longer available.</p>
+                  <Button asChild variant="outline">
+                      <Link href="/dashboard/friends">Back to Community</Link>
+                  </Button>
+              </div>
+          </div>
+      );
+  }
+
   return (
     <div className="container mx-auto pb-8">
       {/* --- HEADER SECTION --- */}
@@ -379,9 +467,21 @@ export default function UserProfilePage(props: { params: Promise<{ userId: strin
                         <>
                             {friendshipStatus === 'accepted' ? (
                                 <>
-                                    <Button variant="secondary" className="font-bold">
-                                        <Check className="mr-2 h-4 w-4" /> Friends
-                                    </Button>
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                            <Button variant="secondary" className="font-bold">
+                                                <Check className="mr-2 h-4 w-4" /> Friends
+                                            </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end">
+                                            <DropdownMenuItem onClick={handleUnfriend} className="text-destructive">
+                                                <UserMinus className="mr-2 h-4 w-4" /> Unfriend
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem onClick={handleBlockUser} className="text-destructive">
+                                                <Ban className="mr-2 h-4 w-4" /> Block
+                                            </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
                                     <Button asChild>
                                         <Link href={`/dashboard/chat/${userId}`}>
                                             <MessageSquare className="mr-2 h-4 w-4" /> Message
@@ -389,15 +489,29 @@ export default function UserProfilePage(props: { params: Promise<{ userId: strin
                                     </Button>
                                 </>
                             ) : friendshipStatus === 'pending' ? (
-                                <Button variant="secondary" disabled className="font-bold">
-                                    Request Sent
-                                </Button>
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                        <Button variant="secondary" className="font-bold">
+                                            Request Sent
+                                        </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                        <DropdownMenuItem onClick={handleCancelRequest}>
+                                            <X className="mr-2 h-4 w-4" /> Cancel Request
+                                        </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
                             ) : friendshipStatus === 'requested' ? (
-                                <Button className="font-bold">
-                                    Respond to Request
-                                </Button>
+                                <div className="flex gap-2">
+                                    <Button className="font-bold" onClick={handleAcceptRequest}>
+                                        Confirm
+                                    </Button>
+                                    <Button variant="secondary" className="font-bold" onClick={handleCancelRequest}>
+                                        Delete
+                                    </Button>
+                                </div>
                             ) : (
-                                <Button className="font-bold">
+                                <Button className="font-bold" onClick={handleAddFriend}>
                                     <UserPlus className="mr-2 h-4 w-4" /> Add Friend
                                 </Button>
                             )}
