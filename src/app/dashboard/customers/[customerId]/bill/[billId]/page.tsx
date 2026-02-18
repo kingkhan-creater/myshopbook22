@@ -381,7 +381,11 @@ export default function BillDetailPage(props: { params: Promise<{ customerId: st
                     <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Method</TableHead><TableHead className="text-right">Amount</TableHead></TableRow></TableHeader>
                     <TableBody>
                         {payments.length > 0 ? payments.map(p => (
-                            <TableRow key={p.id}><TableCell>{format(p.createdAt.toDate(), 'Pp')}</TableCell><TableCell>{p.method}</TableCell><TableCell className="text-right">${p.amount.toFixed(2)}</TableCell></TableRow>
+                            <TableRow key={p.id}>
+                                <TableCell>{p.createdAt ? format(p.createdAt.toDate(), 'Pp') : 'Just now'}</TableCell>
+                                <TableCell>{p.method}</TableCell>
+                                <TableCell className="text-right">${p.amount.toFixed(2)}</TableCell>
+                            </TableRow>
                         )) : <TableRow><TableCell colSpan={3} className="text-center h-24">No payments yet.</TableCell></TableRow>}
                     </TableBody>
                 </Table>

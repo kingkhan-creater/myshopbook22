@@ -148,7 +148,7 @@ export default function PurchaseBillDetailPage(props: { params: Promise<{ billId
                 <Link href={`/dashboard/suppliers/${bill.supplierId}`}><ArrowLeft /></Link>
             </Button>
             <div>
-                <h1 className="text-3xl font-bold tracking-tight">Bill from {format(bill.billDate.toDate(), 'PPP')}</h1>
+                <h1 className="text-3xl font-bold tracking-tight">Bill from {bill.billDate ? format(bill.billDate.toDate(), 'PPP') : 'Processing...'}</h1>
                 <p className="text-muted-foreground">For {supplier.name}</p>
             </div>
         </div>
@@ -202,8 +202,12 @@ export default function PurchaseBillDetailPage(props: { params: Promise<{ billId
                  <Table>
                     <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Method</TableHead><TableHead className="text-right">Amount</TableHead></TableRow></TableHeader>
                     <TableBody>
-                        {bill.payments && bill.payments.length > 0 ? bill.payments.sort((a,b) => (b.createdAt as Timestamp).toMillis() - (a.createdAt as Timestamp).toMillis()).map((p, idx) => (
-                            <TableRow key={idx}><TableCell>{format((p.createdAt as Timestamp).toDate(), 'Pp')}</TableCell><TableCell>{p.method}</TableCell><TableCell className="text-right">${p.amount.toFixed(2)}</TableCell></TableRow>
+                        {bill.payments && bill.payments.length > 0 ? [...bill.payments].sort((a,b) => ((b.createdAt as Timestamp)?.toMillis() || 0) - ((a.createdAt as Timestamp)?.toMillis() || 0)).map((p, idx) => (
+                            <TableRow key={idx}>
+                                <TableCell>{p.createdAt ? format((p.createdAt as Timestamp).toDate(), 'Pp') : 'Just now'}</TableCell>
+                                <TableCell>{p.method}</TableCell>
+                                <TableCell className="text-right">${p.amount.toFixed(2)}</TableCell>
+                            </TableRow>
                         )) : <TableRow><TableCell colSpan={3} className="text-center h-24">No payments recorded yet.</TableCell></TableRow>}
                     </TableBody>
                 </Table>

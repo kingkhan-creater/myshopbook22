@@ -31,7 +31,7 @@ const BillCard = ({ bill, customerId }: { bill: CustomerBill, customerId: string
         <div className="flex justify-between items-start">
           <div>
             <CardTitle className="text-xl">Bill #{bill.billNumber}</CardTitle>
-            <CardDescription>{format(bill.createdAt.toDate(), 'PPP')}</CardDescription>
+            <CardDescription>{bill.createdAt ? format(bill.createdAt.toDate(), 'PPP') : 'Just now'}</CardDescription>
           </div>
           <div className={`px-3 py-1 rounded-full text-sm font-semibold ${isBillOpen ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
             {bill.status}
