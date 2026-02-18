@@ -78,6 +78,7 @@ function CommentItem({
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(comment.text);
   const [likes, setLikes] = useState<CommentLike[]>([]);
+  const [likerProfiles, setLikerProfiles] = useState<Map<string, PublicUserProfile>>(new Map());
   const [myCommentLike, setMyCommentLike] = useState<CommentLike | null>(null);
   const [isLikersOpen, setIsLikersOpen] = useState(false);
   
@@ -95,6 +96,32 @@ function CommentItem({
     });
     return unsub;
   }, [postId, comment.id, user?.uid]);
+
+  // Fetch liker profiles
+  useEffect(() => {
+    if (!isLikersOpen || likes.length === 0) return;
+
+    const likerIds = [...new Set(likes.map(l => l.userId))];
+    const profilesToFetch = likerIds.filter(id => !likerProfiles.has(id));
+
+    if (profilesToFetch.length === 0) return;
+
+    const fetchProfiles = async (ids: string[]) => {
+      try {
+        const q = query(collection(db, 'publicUsers'), where('__name__', 'in', ids));
+        const snapshot = await getDocs(q);
+        const newProfiles = new Map(likerProfiles);
+        snapshot.forEach(doc => {
+          newProfiles.set(doc.id, { uid: doc.id, ...doc.data() } as PublicUserProfile);
+        });
+        setLikerProfiles(newProfiles);
+      } catch (error) {
+        console.error("Error fetching liker profiles:", error);
+      }
+    };
+    
+    fetchProfiles(profilesToFetch);
+  }, [likes, isLikersOpen, likerProfiles]);
 
   const handleUpdate = () => {
     if (editText.trim() && editText.trim() !== comment.text) {
@@ -114,7 +141,7 @@ function CommentItem({
     if (isLiking) {
         setDoc(likeRef, {
             userId: user.uid,
-            userName: user.displayName,
+            userName: myProfile?.fullName || user.displayName || 'Anonymous',
             userPhotoUrl: myProfile?.photoUrl || null,
             createdAt: serverTimestamp()
         });
@@ -216,15 +243,18 @@ function CommentItem({
             </DialogHeader>
             <ScrollArea className="flex-1">
                 <div className="p-2">
-                    {likes.map(like => (
-                        <Link key={like.userId} href={`/dashboard/profile/${like.userId}`} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted transition-colors">
-                            <Avatar className="h-10 w-10">
-                                <AvatarImage src={like.userPhotoUrl ?? undefined} />
-                                <AvatarFallback>{getInitials(like.userName || '')}</AvatarFallback>
-                            </Avatar>
-                            <span className="font-bold text-sm truncate">{like.userName || 'Anonymous'}</span>
-                        </Link>
-                    ))}
+                    {likes.map(like => {
+                        const likerProfile = likerProfiles.get(like.userId);
+                        return (
+                            <Link key={like.userId} href={`/dashboard/profile/${like.userId}`} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted transition-colors">
+                                <Avatar className="h-10 w-10">
+                                    <AvatarImage src={likerProfile?.photoUrl || like.userPhotoUrl || undefined} />
+                                    <AvatarFallback>{getInitials(likerProfile?.fullName || like.userName || '')}</AvatarFallback>
+                                </Avatar>
+                                <span className="font-bold text-sm truncate">{likerProfile?.fullName || like.userName || 'Anonymous'}</span>
+                            </Link>
+                        );
+                    })}
                 </div>
             </ScrollArea>
         </DialogContent>
@@ -241,7 +271,7 @@ export function PostCard({ post }: { post: Post }) {
   const [reactions, setReactions] = useState<Reaction[]>([]);
   const [myReaction, setMyReaction] = useState<Reaction | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
-  const [commenterProfiles, setCommenterProfiles] = useState<Map<string, PublicUserProfile>>(new Map());
+  const [userProfilesCache, setUserProfilesCache] = useState<Map<string, PublicUserProfile>>(new Map());
   const [newComment, setNewComment] = useState('');
   
   // Optimistic UI states for the button feel
@@ -295,34 +325,34 @@ export function PostCard({ post }: { post: Post }) {
     };
   }, [post.id, user?.uid]);
 
-  // Fetch profiles for commenters
+  // Fetch profiles for commenters AND reactors to avoid "Anonymous"
   useEffect(() => {
-    if (comments.length === 0) return;
+    const relevantIds = [...new Set([
+        ...comments.map(c => c.userId),
+        ...(isReactionsListOpen ? reactions.map(r => r.userId) : [])
+    ])].filter(id => id && !userProfilesCache.has(id));
 
-    const commenterIds = [...new Set(comments.map(c => c.userId))];
-    const profilesToFetch = commenterIds.filter(id => !commenterProfiles.has(id) && id);
-
-    if (profilesToFetch.length === 0) return;
+    if (relevantIds.length === 0) return;
 
     const fetchProfiles = async (ids: string[]) => {
       try {
         const q = query(collection(db, 'publicUsers'), where('__name__', 'in', ids));
         const snapshot = await getDocs(q);
-        const newProfiles = new Map(commenterProfiles);
+        const newProfiles = new Map(userProfilesCache);
         snapshot.forEach(doc => {
           newProfiles.set(doc.id, { uid: doc.id, ...doc.data() } as PublicUserProfile);
         });
-        setCommenterProfiles(newProfiles);
+        setUserProfilesCache(newProfiles);
       } catch (error) {
-        console.error("Error fetching commenter profiles:", error);
+        console.error("Error fetching user profiles:", error);
       }
     };
     
-    for (let i = 0; i < profilesToFetch.length; i += 30) {
-        const batchIds = profilesToFetch.slice(i, i + 30);
+    for (let i = 0; i < relevantIds.length; i += 30) {
+        const batchIds = relevantIds.slice(i, i + 30);
         fetchProfiles(batchIds);
     }
-  }, [comments, commenterProfiles]);
+  }, [comments, reactions, isReactionsListOpen, userProfilesCache]);
 
 
   const handleReaction = useCallback((newType: ReactionType) => {
@@ -349,7 +379,7 @@ export function PostCard({ post }: { post: Post }) {
     if (!isUnReacting) {
         setDoc(reactionRef, { 
             userId: user.uid, 
-            userName: user.displayName, 
+            userName: profile?.fullName || user.displayName || 'Anonymous', 
             userPhotoUrl: profile?.photoUrl || null,
             type: newType, 
             createdAt: serverTimestamp() 
@@ -360,15 +390,13 @@ export function PostCard({ post }: { post: Post }) {
     }
 
     if (Object.keys(updates).length > 0) {
-        // No await here to keep it non-blocking
         updateDoc(postRef, updates).catch(err => {
             console.error("Failed to update reaction counts", err);
-            // Firestore SDK usually handles reverts automatically for documented-based listeners
             setOptimisticReactionType(oldType || null);
             toast({ variant: 'destructive', title: 'Error', description: 'Failed to update reaction.' });
         });
     }
-  }, [user, myReaction, post.id, profile?.photoUrl, toast]);
+  }, [user, myReaction, post.id, profile, toast]);
 
   const handleLikeTap = useCallback(() => {
     if (optimisticReactionType) {
@@ -419,7 +447,7 @@ export function PostCard({ post }: { post: Post }) {
       const commentsRef = collection(db, 'posts', post.id, 'comments');
       await addDoc(commentsRef, {
         userId: user.uid,
-        userName: user.displayName || 'Anonymous',
+        userName: profile?.fullName || user.displayName || 'Anonymous',
         text: commentText,
         createdAt: serverTimestamp(),
         likeCount: 0
@@ -470,8 +498,6 @@ export function PostCard({ post }: { post: Post }) {
   }, [post.id, toast]);
 
   const { totalReactions, topReactions, reactionsText } = useMemo(() => {
-    // Note: post.reactionCounts is already optimistically updated by Firestore SDK 
-    // because we are listening to the post document via onSnapshot in the parent feed.
     const counts = { ...(post.reactionCounts || {}) };
     
     const total = Object.values(counts).reduce((sum, count) => sum + (count || 0), 0);
@@ -601,8 +627,8 @@ export function PostCard({ post }: { post: Post }) {
         {/* Quick Comment Input */}
         <div className="w-full flex items-center gap-2 mt-1">
           <Avatar className="h-8 w-8 flex-shrink-0">
-            <AvatarImage src={commenterProfiles.get(user?.uid || '')?.photoUrl ?? undefined} />
-            <AvatarFallback>{getInitials(user?.displayName || '')}</AvatarFallback>
+            <AvatarImage src={profile?.photoUrl || undefined} />
+            <AvatarFallback>{getInitials(profile?.fullName || user?.displayName || '')}</AvatarFallback>
           </Avatar>
           <form onSubmit={handleAddComment} className="flex-1 flex items-center relative">
             <input
@@ -638,7 +664,7 @@ export function PostCard({ post }: { post: Post }) {
                                 comment={comment}
                                 postId={post.id}
                                 postOwnerId={post.userId}
-                                profile={commenterProfiles.get(comment.userId)}
+                                profile={userProfilesCache.get(comment.userId)}
                                 onDelete={handleDeleteComment}
                                 onUpdate={handleUpdateComment}
                             />
@@ -649,8 +675,8 @@ export function PostCard({ post }: { post: Post }) {
             <div className="p-4 border-t bg-background">
                 <div className="flex items-center gap-2">
                     <Avatar className="h-8 w-8 flex-shrink-0">
-                        <AvatarImage src={commenterProfiles.get(user?.uid || '')?.photoUrl ?? undefined} />
-                        <AvatarFallback>{getInitials(user?.displayName || '')}</AvatarFallback>
+                        <AvatarImage src={profile?.photoUrl || undefined} />
+                        <AvatarFallback>{getInitials(profile?.fullName || user?.displayName || '')}</AvatarFallback>
                     </Avatar>
                     <form onSubmit={handleAddComment} className="flex-1 flex items-center relative">
                         <input
@@ -680,23 +706,26 @@ export function PostCard({ post }: { post: Post }) {
             </DialogHeader>
             <ScrollArea className="flex-1">
                 <div className="p-2">
-                    {reactions.map(react => (
-                        <Link key={react.userId} href={`/dashboard/profile/${react.userId}`} className="flex items-center justify-between p-2 rounded-lg hover:bg-muted transition-colors cursor-pointer">
-                            <div className="flex items-center gap-3 min-w-0 flex-1">
-                                <div className="relative flex-shrink-0">
-                                    <Avatar className="h-10 w-10">
-                                        <AvatarImage src={react.userPhotoUrl ?? undefined} />
-                                        <AvatarFallback>{getInitials(react.userName || '')}</AvatarFallback>
-                                    </Avatar>
-                                    <div className="absolute -bottom-1 -right-1 bg-background rounded-full p-0.5 shadow-sm border">
-                                        {React.cloneElement(reactionIcons[react.type] as React.ReactElement, { className: 'h-3 w-3' })}
+                    {reactions.map(react => {
+                        const reactorProfile = userProfilesCache.get(react.userId);
+                        return (
+                            <Link key={react.userId} href={`/dashboard/profile/${react.userId}`} className="flex items-center justify-between p-2 rounded-lg hover:bg-muted transition-colors cursor-pointer">
+                                <div className="flex items-center gap-3 min-w-0 flex-1">
+                                    <div className="relative flex-shrink-0">
+                                        <Avatar className="h-10 w-10">
+                                            <AvatarImage src={reactorProfile?.photoUrl || react.userPhotoUrl || undefined} />
+                                            <AvatarFallback>{getInitials(reactorProfile?.fullName || react.userName || '')}</AvatarFallback>
+                                        </Avatar>
+                                        <div className="absolute -bottom-1 -right-1 bg-background rounded-full p-0.5 shadow-sm border">
+                                            {React.cloneElement(reactionIcons[react.type] as React.ReactElement, { className: 'h-3 w-3' })}
+                                        </div>
                                     </div>
+                                    <span className="font-bold text-sm truncate">{reactorProfile?.fullName || react.userName || 'Anonymous'}</span>
                                 </div>
-                                <span className="font-bold text-sm truncate">{react.userName || 'Anonymous'}</span>
-                            </div>
-                            <Button variant="ghost" size="sm" className="bg-muted hover:bg-muted/80 h-8 px-3 text-xs font-bold flex-shrink-0 ml-2">View Profile</Button>
-                        </Link>
-                    ))}
+                                <Button variant="ghost" size="sm" className="bg-muted hover:bg-muted/80 h-8 px-3 text-xs font-bold flex-shrink-0 ml-2">View Profile</Button>
+                            </Link>
+                        );
+                    })}
                 </div>
             </ScrollArea>
         </DialogContent>
