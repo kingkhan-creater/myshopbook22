@@ -195,41 +195,63 @@ const StoryViewer = ({ open, onOpenChange, userStories }: { open: boolean, onOpe
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="p-0 border-0 bg-black/90 max-w-md h-full md:h-[90vh] md:max-h-[800px] flex flex-col focus:outline-none">
+            <DialogContent className="p-0 border-0 bg-black max-w-md h-full md:h-[90vh] md:max-h-[800px] flex flex-col focus:outline-none overflow-hidden">
                  <DialogHeader className="sr-only">
                     <DialogTitle>Story from {author.name}</DialogTitle>
                  </DialogHeader>
-                 <div className="absolute top-0 left-0 right-0 p-4 z-10 bg-gradient-to-b from-black/50 to-transparent">
-                    <div className="flex items-center gap-2 mb-2">
+                 
+                 {/* Top Progress and Header Info */}
+                 <div className="absolute top-0 left-0 right-0 p-4 z-30 bg-gradient-to-b from-black/60 to-transparent">
+                    <div className="flex items-center gap-1.5 mb-3">
                         {userStories.map((_, index) => (
-                            <Progress key={index} value={index === current ? progress : (index < current ? 100 : 0)} className="h-1 flex-1 bg-white/30" />
+                            <Progress key={index} value={index === current ? progress : (index < current ? 100 : 0)} className="h-1 flex-1 bg-white/20" />
                         ))}
                     </div>
                     <div className="flex items-center gap-3">
-                        <Avatar className="h-9 w-9 border-2 border-white">
+                        <Avatar className="h-9 w-9 border border-white/50">
                             <AvatarImage src={author.photoUrl ?? undefined} />
                             <AvatarFallback>{getInitials(author.name)}</AvatarFallback>
                         </Avatar>
-                        <p className="font-semibold text-white">{author.name}</p>
+                        <p className="font-semibold text-white text-sm shadow-black drop-shadow-md">{author.name}</p>
                     </div>
                  </div>
-                <Carousel setApi={setApi} className="w-full h-full flex-1">
-                    <CarouselContent className="h-full">
-                        {userStories.map((story) => (
-                            <CarouselItem key={story.id} className="h-full flex items-center justify-center">
-                                <div className="relative w-full h-full">
-                                   <Image src={story.imageUrl} alt={story.text || 'Story'} layout="fill" objectFit="contain" />
-                                   {story.text && <p className="absolute bottom-10 left-0 right-0 p-4 text-center text-white text-lg font-semibold bg-black/40">{story.text}</p>}
-                                </div>
-                            </CarouselItem>
-                        ))}
-                    </CarouselContent>
-                    <div className="absolute inset-0 flex justify-between items-center z-20">
-                         <button onClick={() => api?.scrollPrev()} className="h-full w-1/2" aria-label="Previous story" />
-                         <button onClick={() => api?.scrollNext()} className="h-full w-1/2" aria-label="Next story" />
-                    </div>
-                </Carousel>
-                <DialogClose className="absolute right-2 top-2 z-20 rounded-full bg-black/50 p-1 text-white opacity-70 hover:opacity-100">
+
+                {/* Main Content Carousel */}
+                <div className="relative flex-1 w-full h-full bg-black">
+                    <Carousel setApi={setApi} className="w-full h-full">
+                        <CarouselContent className="h-full">
+                            {userStories.map((story) => (
+                                <CarouselItem key={story.id} className="h-full relative">
+                                    <div className="relative w-full h-full flex items-center justify-center">
+                                       <Image 
+                                            src={story.imageUrl} 
+                                            alt={story.text || 'Story'} 
+                                            fill 
+                                            className="object-contain" 
+                                            priority
+                                        />
+                                       {story.text && (
+                                            <div className="absolute bottom-20 left-0 right-0 p-6 text-center z-10">
+                                                <p className="inline-block px-4 py-2 rounded-lg text-white text-base font-medium bg-black/50 backdrop-blur-sm">
+                                                    {story.text}
+                                                </p>
+                                            </div>
+                                       )}
+                                    </div>
+                                </CarouselItem>
+                            ))}
+                        </CarouselContent>
+                        
+                        {/* Interaction Layers */}
+                        <div className="absolute inset-0 flex z-20">
+                             <button onClick={() => api?.scrollPrev()} className="h-full w-1/3 cursor-pointer" aria-label="Previous story" />
+                             <button className="h-full w-1/3 cursor-default" />
+                             <button onClick={() => api?.scrollNext()} className="h-full w-1/3 cursor-pointer" aria-label="Next story" />
+                        </div>
+                    </Carousel>
+                </div>
+
+                <DialogClose className="absolute right-4 top-12 z-40 rounded-full bg-black/40 p-2 text-white hover:bg-black/60 transition-colors">
                     <X className="h-5 w-5" />
                 </DialogClose>
             </DialogContent>
@@ -299,7 +321,7 @@ export function StoriesSection() {
                         <div className="flex w-max space-x-4 p-4">
                              {/* Add Story Button */}
                             <div className="flex flex-col items-center gap-2">
-                                <button onClick={() => setIsCreatorOpen(true)} className="h-16 w-16 rounded-full border-2 border-dashed border-primary flex items-center justify-center text-primary hover:bg-primary/10">
+                                <button onClick={() => setIsCreatorOpen(true)} className="h-16 w-16 rounded-full border-2 border-dashed border-primary flex items-center justify-center text-primary hover:bg-primary/10 transition-colors">
                                     <PlusCircle className="h-8 w-8" />
                                 </button>
                                 <p className="text-xs font-medium w-16 truncate text-center">Add Story</p>
@@ -311,11 +333,13 @@ export function StoriesSection() {
                                 if (!userStories || userStories.length === 0) return null;
                                 const userDetails = userStories[0];
                                 return (
-                                    <div key={userId} className="flex flex-col items-center gap-2 cursor-pointer" onClick={() => handleViewUserStories(userId)}>
-                                        <Avatar className="h-16 w-16 border-2 border-primary p-0.5">
-                                            <AvatarImage src={userDetails.userPhotoUrl ?? undefined} />
-                                            <AvatarFallback>{getInitials(userDetails.userName)}</AvatarFallback>
-                                        </Avatar>
+                                    <div key={userId} className="flex flex-col items-center gap-2 cursor-pointer group" onClick={() => handleViewUserStories(userId)}>
+                                        <div className="relative h-16 w-16 rounded-full border-2 border-primary p-0.5 group-hover:scale-105 transition-transform">
+                                            <Avatar className="h-full w-full">
+                                                <AvatarImage src={userDetails.userPhotoUrl ?? undefined} className="object-cover" />
+                                                <AvatarFallback>{getInitials(userDetails.userName)}</AvatarFallback>
+                                            </Avatar>
+                                        </div>
                                         <p className="text-xs font-medium w-16 truncate text-center">{userDetails.userName}</p>
                                     </div>
                                 );
