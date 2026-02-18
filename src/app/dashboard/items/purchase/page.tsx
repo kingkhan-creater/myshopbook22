@@ -174,7 +174,6 @@ export default function PurchasePage() {
 
         for (const billItem of billItems) {
             if (billItem.itemId === 'new') {
-                // Create new item
                 const newItemRef = doc(userItemsRef);
                 batch.set(newItemRef, {
                     name: billItem.itemName,
@@ -185,7 +184,6 @@ export default function PurchasePage() {
                     supplier: selectedSupplierId
                 });
             } else {
-                // Update existing item
                 const itemRef = doc(db, 'users', user.uid, 'items', billItem.itemId);
                 batch.update(itemRef, { 
                     stockQty: increment(billItem.qty),
@@ -195,14 +193,12 @@ export default function PurchasePage() {
             }
         }
         
-        // Update supplier totals
         const supplierRef = doc(db, 'users', user.uid, 'suppliers', selectedSupplierId);
         batch.update(supplierRef, {
             totalPurchase: increment(summary.grandTotal),
             totalPaid: increment(paymentGiven)
         });
 
-        // Create purchase bill document
         const billRef = collection(db, 'users', user.uid, 'purchaseBills');
         await addDoc(billRef, {
             supplierId: selectedSupplierId,
@@ -231,17 +227,17 @@ export default function PurchasePage() {
     <div className="container mx-auto p-4 sm:p-6 lg:p-8">
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-center gap-4">
                <Button variant="outline" size="icon" asChild>
                 <Link href="/dashboard/items"><ArrowLeft /></Link>
                </Button>
                <div>
-                <CardTitle className="text-3xl font-bold tracking-tight">New Purchase Bill</CardTitle>
-                <CardDescription>Add items to your inventory from a supplier.</CardDescription>
+                <CardTitle className="text-2xl sm:text-3xl font-bold tracking-tight">New Purchase Bill</CardTitle>
+                <CardDescription>Add items to inventory from a supplier.</CardDescription>
                </div>
             </div>
-            <Button onClick={handleSaveBill} disabled={isSaving}>
+            <Button onClick={handleSaveBill} disabled={isSaving} className="w-full sm:w-auto">
               {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Save Bill
             </Button>
@@ -250,10 +246,10 @@ export default function PurchasePage() {
         <CardContent className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <Card>
-                    <CardHeader>
+                    <CardHeader className="p-4 sm:p-6">
                         <CardTitle className="text-lg">Supplier Details</CardTitle>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="p-4 sm:p-6 pt-0 sm:pt-0">
                     {loading ? <p>Loading suppliers...</p> : (
                          <div className="flex items-center gap-2">
                              <Select value={selectedSupplierId} onValueChange={setSelectedSupplierId}>
@@ -268,7 +264,7 @@ export default function PurchasePage() {
                                 <DialogTrigger asChild>
                                     <Button variant="outline" size="icon"><UserPlus/></Button>
                                 </DialogTrigger>
-                                <DialogContent>
+                                <DialogContent className="sm:max-w-[425px]">
                                     <DialogHeader>
                                         <DialogTitle>Add New Supplier</DialogTitle>
                                         <DialogDescription>Enter the details for the new supplier.</DialogDescription>
@@ -299,89 +295,100 @@ export default function PurchasePage() {
             </div>
 
             <Card>
-                <CardHeader>
-                    <CardTitle>Bill Items</CardTitle>
+                <CardHeader className="p-4 sm:p-6">
+                    <CardTitle className="text-lg">Bill Items</CardTitle>
                 </CardHeader>
-                <CardContent>
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead className="w-[30%]">Item</TableHead>
-                                <TableHead>Qty</TableHead>
-                                <TableHead>Purchase Price</TableHead>
-                                <TableHead>Selling Price</TableHead>
-                                <TableHead>Subtotal</TableHead>
-                                <TableHead>Actions</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {billItems.map(item => (
-                                <TableRow key={item.rowId}>
-                                    <TableCell>
-                                        <Select
-                                          value={item.itemId}
-                                          onValueChange={(value) => handleBillItemChange(item.rowId, 'itemId', value)}>
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Select an item" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="new">-- Create New Item --</SelectItem>
-                                                {items.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}
-                                            </SelectContent>
-                                        </Select>
-                                        {item.itemId === 'new' && (
-                                            <Input 
-                                                placeholder="Enter new item name"
-                                                className="mt-2"
-                                                value={item.itemName}
-                                                onChange={(e) => handleBillItemChange(item.rowId, 'itemName', e.target.value)}
-                                            />
-                                        )}
-                                    </TableCell>
-                                    <TableCell>
-                                        <Input type="number" placeholder="0" value={item.qty} onChange={(e) => handleBillItemChange(item.rowId, 'qty', parseInt(e.target.value) || 0)} />
-                                    </TableCell>
-                                    <TableCell>
-                                        <Input type="number" placeholder="0.00" value={item.price} onChange={(e) => handleBillItemChange(item.rowId, 'price', parseFloat(e.target.value) || 0)} />
-                                    </TableCell>
-                                     <TableCell>
-                                        <Input type="number" placeholder="0.00" value={item.sellingPrice} onChange={(e) => handleBillItemChange(item.rowId, 'sellingPrice', parseFloat(e.target.value) || 0)} />
-                                    </TableCell>
-                                    <TableCell>${(item.qty * item.price).toFixed(2)}</TableCell>
-                                    <TableCell>
-                                        <Button variant="ghost" size="icon" onClick={() => removeBillRow(item.rowId)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                                    </TableCell>
+                <CardContent className="p-0 sm:p-6">
+                    <div className="overflow-x-auto">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead className="min-w-[200px]">Item</TableHead>
+                                    <TableHead className="min-w-[80px]">Qty</TableHead>
+                                    <TableHead className="min-w-[100px]">Purchase Price</TableHead>
+                                    <TableHead className="min-w-[100px]">Selling Price</TableHead>
+                                    <TableHead className="min-w-[100px]">Subtotal</TableHead>
+                                    <TableHead className="w-[50px]"></TableHead>
                                 </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                    <Button onClick={addBillRow} variant="outline" className="mt-4">
-                        <PlusCircle className="mr-2 h-4 w-4" /> Add Row
-                    </Button>
+                            </TableHeader>
+                            <TableBody>
+                                {billItems.map(item => (
+                                    <TableRow key={item.rowId}>
+                                        <TableCell>
+                                            <Select
+                                              value={item.itemId}
+                                              onValueChange={(value) => handleBillItemChange(item.rowId, 'itemId', value)}>
+                                                <SelectTrigger className="h-9">
+                                                    <SelectValue placeholder="Select an item" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="new">-- Create New Item --</SelectItem>
+                                                    {items.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}
+                                                </SelectContent>
+                                            </Select>
+                                            {item.itemId === 'new' && (
+                                                <Input 
+                                                    placeholder="Item name"
+                                                    className="mt-2 h-8 text-sm"
+                                                    value={item.itemName}
+                                                    onChange={(e) => handleBillItemChange(item.rowId, 'itemName', e.target.value)}
+                                                />
+                                            )}
+                                        </TableCell>
+                                        <TableCell>
+                                            <Input type="number" className="h-9 w-full" value={item.qty} onChange={(e) => handleBillItemChange(item.rowId, 'qty', parseInt(e.target.value) || 0)} />
+                                        </TableCell>
+                                        <TableCell>
+                                            <Input type="number" className="h-9 w-full" value={item.price} onChange={(e) => handleBillItemChange(item.rowId, 'price', parseFloat(e.target.value) || 0)} />
+                                        </TableCell>
+                                        <TableCell>
+                                            <Input type="number" className="h-9 w-full" value={item.sellingPrice} onChange={(e) => handleBillItemChange(item.rowId, 'sellingPrice', parseFloat(e.target.value) || 0)} />
+                                        </TableCell>
+                                        <TableCell className="font-medium">
+                                            ${(item.qty * item.price).toFixed(2)}
+                                        </TableCell>
+                                        <TableCell>
+                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeBillRow(item.rowId)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </div>
+                    <div className="p-4 border-t">
+                        <Button onClick={addBillRow} variant="outline" size="sm" className="w-full sm:w-auto">
+                            <PlusCircle className="mr-2 h-4 w-4" /> Add Item
+                        </Button>
+                    </div>
                 </CardContent>
             </Card>
 
              <Card>
-                <CardHeader>
-                    <CardTitle>Payment & Summary</CardTitle>
+                <CardHeader className="p-4 sm:p-6">
+                    <CardTitle className="text-lg">Payment & Summary</CardTitle>
                 </CardHeader>
-                <CardContent className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div className="text-center p-4 bg-muted rounded-lg">
-                        <p className="text-sm text-muted-foreground">Total Items</p>
+                <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-4 sm:p-6 pt-0 sm:pt-0">
+                    <div className="text-center p-4 bg-muted rounded-lg flex flex-col justify-center">
+                        <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Total Items</p>
                         <p className="text-2xl font-bold">{billItems.length}</p>
                     </div>
-                    <div className="text-center p-4 bg-muted rounded-lg">
-                        <p className="text-sm text-muted-foreground">Total Quantity</p>
+                    <div className="text-center p-4 bg-muted rounded-lg flex flex-col justify-center">
+                        <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Total Quantity</p>
                         <p className="text-2xl font-bold">{summary.totalQty}</p>
                     </div>
-                    <div className="text-center p-4 bg-muted rounded-lg">
-                        <p className="text-sm text-muted-foreground">Grand Total</p>
+                    <div className="text-center p-4 bg-primary text-primary-foreground rounded-lg flex flex-col justify-center">
+                        <p className="text-xs opacity-80 uppercase tracking-wider font-semibold">Grand Total</p>
                         <p className="text-2xl font-bold">${summary.grandTotal.toFixed(2)}</p>
                     </div>
-                    <div className="p-4 rounded-lg border space-y-2">
-                        <Label htmlFor="paymentGiven">Payment Given</Label>
-                        <Input id="paymentGiven" type="number" value={paymentGiven} onChange={(e) => setPaymentGiven(parseFloat(e.target.value) || 0)} placeholder="0.00"/>
-                        <p className="text-lg font-semibold">Remaining: <span className="text-destructive">${summary.remaining.toFixed(2)}</span></p>
+                    <div className="p-4 rounded-lg border space-y-3">
+                        <div className="space-y-1">
+                            <Label htmlFor="paymentGiven" className="text-xs uppercase tracking-wider font-semibold text-muted-foreground">Payment Given</Label>
+                            <Input id="paymentGiven" type="number" className="h-9" value={paymentGiven} onChange={(e) => setPaymentGiven(parseFloat(e.target.value) || 0)} />
+                        </div>
+                        <p className="text-sm font-semibold flex justify-between">
+                            <span>Remaining:</span>
+                            <span className="text-destructive">${summary.remaining.toFixed(2)}</span>
+                        </p>
                     </div>
                 </CardContent>
             </Card>

@@ -420,13 +420,19 @@ export default function ItemsPage() {
                 <Package className="h-12 w-12 text-muted-foreground" />
               </div>
             )}
-            <h3 className="font-semibold text-lg">{item.name}</h3>
+            <h3 className="font-semibold text-lg line-clamp-1">{item.name}</h3>
             <div className="text-sm text-muted-foreground mt-1">
-                <p>Qty: <span className="font-medium text-foreground">{item.stockQty}</span></p>
+                <p>Available Stock: <span className="font-bold text-foreground">{item.stockQty}</span></p>
             </div>
-             <div className="mt-2">
-                <p className="text-xl font-bold text-primary">${item.salePrice.toFixed(2)}</p>
-                <p className="text-xs text-muted-foreground">Cost: ${item.purchasePrice.toFixed(2)}</p>
+             <div className="mt-2 pt-2 border-t space-y-1">
+                <div className="flex justify-between items-center">
+                    <span className="text-xs text-muted-foreground font-semibold uppercase">Selling Price</span>
+                    <p className="text-lg font-bold text-primary">${item.salePrice.toFixed(2)}</p>
+                </div>
+                <div className="flex justify-between items-center opacity-70">
+                    <span className="text-xs text-muted-foreground uppercase">Purchase Cost</span>
+                    <p className="text-sm font-semibold">${item.purchasePrice.toFixed(2)}</p>
+                </div>
             </div>
         </CardContent>
         <CardFooter className="p-2 border-t">
@@ -444,9 +450,9 @@ export default function ItemsPage() {
 
   return (
     <div className="container mx-auto p-4 sm:p-6 lg:p-8">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold tracking-tight">Available Items</h1>
-         <Button asChild>
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
+        <h1 className="text-3xl font-bold tracking-tight text-primary">Available Items</h1>
+         <Button asChild className="w-full sm:w-auto">
             <Link href="/dashboard/items/new">
                 <PlusCircle className="mr-2 h-4 w-4" /> Add/Purchase Items
             </Link>
@@ -500,10 +506,10 @@ export default function ItemsPage() {
       <Dialog open={isSellDialogOpen} onOpenChange={setIsSellDialogOpen}>
             <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader><DialogTitle>Create Sale Bill</DialogTitle><DialogDescription>Select a customer and add items to sell.</DialogDescription></DialogHeader>
-                <div className="grid grid-cols-5 gap-6 py-4">
-                    <div className="col-span-2 space-y-4">
-                        <Card><CardHeader><CardTitle className="text-lg">Customer</CardTitle></CardHeader>
-                            <CardContent>
+                <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 py-4">
+                    <div className="lg:col-span-2 space-y-4">
+                        <Card><CardHeader className="p-4"><CardTitle className="text-lg">Customer</CardTitle></CardHeader>
+                            <CardContent className="p-4 pt-0">
                                 {loadingCustomers ? <p>Loading...</p> : (
                                     <div className="flex items-center gap-2">
                                         <Select value={selectedCustomerId} onValueChange={setSelectedCustomerId}><SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger><SelectContent>{customers.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select>
@@ -522,8 +528,8 @@ export default function ItemsPage() {
                                 )}
                             </CardContent>
                         </Card>
-                        <Card><CardHeader><CardTitle className="text-lg">Payment</CardTitle></CardHeader>
-                            <CardContent className="space-y-4">
+                        <Card><CardHeader className="p-4"><CardTitle className="text-lg">Payment</CardTitle></CardHeader>
+                            <CardContent className="space-y-4 p-4 pt-0">
                                 <div className="text-center p-4 bg-muted rounded-lg">
                                     <p className="text-sm text-muted-foreground">Grand Total</p><p className="text-2xl font-bold">${saleSummary.itemsTotal.toFixed(2)}</p>
                                 </div>
@@ -535,31 +541,36 @@ export default function ItemsPage() {
                             </CardContent>
                         </Card>
                     </div>
-                    <div className="col-span-3">
-                        <Card><CardHeader><CardTitle className="text-lg">Bill Items</CardTitle></CardHeader>
-                            <CardContent>
-                                <Table><TableHeader><TableRow><TableHead className="w-[35%]">Item</TableHead><TableHead>Qty</TableHead><TableHead>Rate</TableHead><TableHead>Discount</TableHead><TableHead>Subtotal</TableHead><TableHead></TableHead></TableRow></TableHeader>
-                                    <TableBody>
-                                        {saleItems.map(item => (
-                                            <TableRow key={item.rowId}>
-                                                <TableCell>{item.itemName || (<Select value={item.itemId} onValueChange={(v) => handleSaleItemChange(item.rowId, 'itemId', v)}><SelectTrigger><SelectValue placeholder="Select Item"/></SelectTrigger><SelectContent>{items.filter(i=>i.stockQty > 0).map(i => <SelectItem key={i.id} value={i.id}>{i.name} (Qty: {i.stockQty})</SelectItem>)}</SelectContent></Select>)}</TableCell>
-                                                <TableCell><Input type="number" value={item.qty} onChange={e => handleSaleItemChange(item.rowId, 'qty', parseInt(e.target.value) || 0)} className="w-16"/></TableCell>
-                                                <TableCell><Input type="number" value={item.rate} onChange={e => handleSaleItemChange(item.rowId, 'rate', parseFloat(e.target.value) || 0)} className="w-20"/></TableCell>
-                                                <TableCell><Input type="number" value={item.discount} onChange={e => handleSaleItemChange(item.rowId, 'discount', parseFloat(e.target.value) || 0)} className="w-20"/></TableCell>
-                                                <TableCell>${((item.qty * item.rate) - (item.discount || 0)).toFixed(2)}</TableCell>
-                                                <TableCell><Button variant="ghost" size="icon" onClick={() => handleRemoveSaleItemRow(item.rowId)}><Trash2 className="h-4 w-4 text-destructive"/></Button></TableCell>
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
-                                <Button onClick={handleAddSaleItemRow} variant="outline" className="mt-4"><PlusCircle className="mr-2 h-4 w-4"/>Add Item</Button>
+                    <div className="lg:col-span-3">
+                        <Card><CardHeader className="p-4"><CardTitle className="text-lg">Bill Items</CardTitle></CardHeader>
+                            <CardContent className="p-0 sm:p-4">
+                                <div className="overflow-x-auto">
+                                    <Table><TableHeader><TableRow><TableHead className="min-w-[150px]">Item</TableHead><TableHead className="min-w-[80px]">Qty</TableHead><TableHead className="min-w-[80px]">Rate</TableHead><TableHead className="min-w-[100px]">Subtotal</TableHead><TableHead className="w-[50px]"></TableHead></TableRow></TableHeader>
+                                        <TableBody>
+                                            {saleItems.map(item => (
+                                                <TableRow key={item.rowId}>
+                                                    <TableCell>{item.itemName || (<Select value={item.itemId} onValueChange={(v) => handleSaleItemChange(item.rowId, 'itemId', v)}><SelectTrigger className="h-8"><SelectValue placeholder="Select Item"/></SelectTrigger><SelectContent>{items.filter(i=>i.stockQty > 0).map(i => <SelectItem key={i.id} value={i.id}>{i.name} (Qty: {i.stockQty})</SelectItem>)}</SelectContent></Select>)}</TableCell>
+                                                    <TableCell><Input type="number" value={item.qty} onChange={e => handleSaleItemChange(item.rowId, 'qty', parseInt(e.target.value) || 0)} className="w-16 h-8"/></TableCell>
+                                                    <TableCell><Input type="number" value={item.rate} onChange={e => handleSaleItemChange(item.rowId, 'rate', parseFloat(e.target.value) || 0)} className="w-20 h-8"/></TableCell>
+                                                    <TableCell className="text-sm font-medium">${((item.qty * item.rate) - (item.discount || 0)).toFixed(2)}</TableCell>
+                                                    <TableCell><Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleRemoveSaleItemRow(item.rowId)}><Trash2 className="h-4 w-4 text-destructive"/></Button></TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                                <div className="p-4 border-t">
+                                    <Button onClick={handleAddSaleItemRow} variant="outline" size="sm" className="w-full">
+                                        <PlusCircle className="mr-2 h-4 w-4"/>Add Item
+                                    </Button>
+                                </div>
                             </CardContent>
                         </Card>
                     </div>
                 </div>
-                <DialogFooter>
-                    <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                    <Button onClick={handleSaveSale} disabled={isSavingSale}>
+                <DialogFooter className="flex flex-col sm:flex-row gap-2">
+                    <DialogClose asChild><Button variant="outline" className="w-full sm:w-auto">Cancel</Button></DialogClose>
+                    <Button onClick={handleSaveSale} disabled={isSavingSale} className="w-full sm:w-auto">
                         {isSavingSale && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
                         Confirm Sale
                     </Button>
