@@ -40,7 +40,6 @@ import Link from 'next/link';
 
 export default function BillDetailPage(props: { params: Promise<{ customerId: string, billId: string }>, searchParams: Promise<{ [key: string]: string | string[] | undefined }> }) {
   const { customerId, billId } = use(props.params);
-  // Unwrap searchParams to satisfy dynamic API proxy
   use(props.searchParams);
 
   const { user } = useAuth();
@@ -54,12 +53,10 @@ export default function BillDetailPage(props: { params: Promise<{ customerId: st
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
-  // State for 'Add Payment' Dialog
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState<number | string>('');
   const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'Card' | 'Online' | 'Other'>('Cash');
   
-  // State for 'Add Item' Dialog
   const [isItemDialogOpen, setIsItemDialogOpen] = useState(false);
   const [inventoryItems, setInventoryItems] = useState<Item[]>([]);
   const [saleItem, setSaleItem] = useState<{itemId: string, qty: number, rate: number, stock: number} | null>(null);
@@ -91,7 +88,6 @@ export default function BillDetailPage(props: { params: Promise<{ customerId: st
       setPayments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BillPayment)));
     });
     
-    // Fetch customer data once
     getDoc(doc(db, 'users', user.uid, 'customers', customerId)).then(docSnap => {
         if(docSnap.exists()) setCustomer({id: docSnap.id, ...docSnap.data()} as Customer)
     })
@@ -103,7 +99,6 @@ export default function BillDetailPage(props: { params: Promise<{ customerId: st
     };
   }, [user, customerId, billId, router, toast]);
   
-  // Effect to fetch inventory items when 'Add Item' dialog is opened
   useEffect(() => {
     if (isItemDialogOpen && user) {
         const itemsQuery = query(collection(db, 'users', user.uid, 'items'), where('stockQty', '>', 0));
@@ -222,13 +217,11 @@ export default function BillDetailPage(props: { params: Promise<{ customerId: st
             const oldBillRef = doc(db, 'users', user.uid, 'bills', billId);
             const newBillRef = doc(collection(db, 'users', user.uid, 'bills'));
             
-            // Close the old bill
             transaction.update(oldBillRef, {
                 status: 'CLOSED',
                 closedAt: serverTimestamp()
             });
 
-            // Create a new open bill with the remaining balance as previousBalance
             transaction.set(newBillRef, {
                 id: newBillRef.id,
                 customerId: customerId,
@@ -264,8 +257,7 @@ export default function BillDetailPage(props: { params: Promise<{ customerId: st
 
   return (
     <div className="container mx-auto p-4 sm:p-6 lg:p-8">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-4 mb-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
         <div className="flex items-center gap-4">
             <Button variant="outline" size="icon" asChild>
                 <Link href={`/dashboard/customers/${customerId}`}><ArrowLeft /></Link>
@@ -277,7 +269,7 @@ export default function BillDetailPage(props: { params: Promise<{ customerId: st
         </div>
         {isBillOpen && (
              <Dialog>
-                <DialogTrigger asChild><Button variant="destructive" disabled={isSaving}><FileSignature className="mr-2 h-4 w-4"/> Close Bill</Button></DialogTrigger>
+                <DialogTrigger asChild><Button variant="destructive" disabled={isSaving} className="w-full sm:w-auto"><FileSignature className="mr-2 h-4 w-4"/> Close Bill</Button></DialogTrigger>
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>Are you sure?</DialogTitle>
@@ -297,22 +289,20 @@ export default function BillDetailPage(props: { params: Promise<{ customerId: st
         )}
       </div>
 
-    {/* Summary Cards */}
-    <div className="grid md:grid-cols-4 gap-4 mb-6 text-center">
-        <Card><CardHeader><CardTitle>${bill.grandTotal.toFixed(2)}</CardTitle><CardDescription>Grand Total</CardDescription></CardHeader></Card>
-        <Card><CardHeader><CardTitle className="text-green-600">${bill.totalPaid.toFixed(2)}</CardTitle><CardDescription>Paid</CardDescription></CardHeader></Card>
-        <Card><CardHeader><CardTitle className="text-destructive">${bill.remaining.toFixed(2)}</CardTitle><CardDescription>Remaining</CardDescription></CardHeader></Card>
-        <Card className={isBillOpen ? 'bg-green-100' : 'bg-red-100'}><CardHeader><CardTitle className={isBillOpen ? 'text-green-800' : 'text-red-800'}>{bill.status}</CardTitle><CardDescription>Status</CardDescription></CardHeader></Card>
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 text-center">
+        <Card><CardHeader className="p-4"><CardTitle className="text-xl">${bill.grandTotal.toFixed(2)}</CardTitle><CardDescription>Total</CardDescription></CardHeader></Card>
+        <Card><CardHeader className="p-4"><CardTitle className="text-xl text-green-600">${bill.totalPaid.toFixed(2)}</CardTitle><CardDescription>Paid</CardDescription></CardHeader></Card>
+        <Card><CardHeader className="p-4"><CardTitle className="text-xl text-destructive">${bill.remaining.toFixed(2)}</CardTitle><CardDescription>Due</CardDescription></CardHeader></Card>
+        <Card className={isBillOpen ? 'bg-green-50' : 'bg-red-50'}><CardHeader className="p-4"><CardTitle className={cn("text-xl", isBillOpen ? 'text-green-800' : 'text-red-800')}>{bill.status}</CardTitle><CardDescription>Status</CardDescription></CardHeader></Card>
     </div>
 
-    <div className="grid md:grid-cols-2 gap-6">
-        {/* Items Card */}
+    <div className="grid lg:grid-cols-2 gap-6">
         <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>Bill Items</CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between p-4 sm:p-6">
+                <CardTitle className="text-lg">Bill Items</CardTitle>
                 {isBillOpen && (
                     <Dialog open={isItemDialogOpen} onOpenChange={setIsItemDialogOpen}>
-                        <DialogTrigger asChild><Button size="sm"><PlusCircle className="mr-2 h-4 w-4"/>Add Item</Button></DialogTrigger>
+                        <DialogTrigger asChild><Button size="sm"><PlusCircle className="mr-2 h-4 w-4"/>Add</Button></DialogTrigger>
                         <DialogContent>
                             <DialogHeader><DialogTitle>Add Item to Bill</DialogTitle></DialogHeader>
                             <div className="space-y-4 py-4">
@@ -322,7 +312,7 @@ export default function BillDetailPage(props: { params: Promise<{ customerId: st
                                     if(item) setSaleItem({itemId: id, qty: 1, rate: item.salePrice, stock: item.stockQty });
                                 }}>
                                     <SelectTrigger><SelectValue placeholder="Select an item"/></SelectTrigger>
-                                    <SelectContent>{inventoryItems.map(i => <SelectItem key={i.id} value={i.id}>{i.name} (Qty: {i.stockQty})</SelectItem>)}</SelectContent>
+                                    <SelectContent>{inventoryItems.map(i => <SelectItem key={i.id} value={i.id}>{i.name} (Stock: {i.stockQty})</SelectItem>)}</SelectContent>
                                 </Select>
                                 {saleItem && (
                                     <>
@@ -336,69 +326,68 @@ export default function BillDetailPage(props: { params: Promise<{ customerId: st
                                 <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
                                 <Button onClick={handleAddItem} disabled={isSaving || !saleItem || (saleItem && saleItem.qty > saleItem.stock)}>
                                     {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-                                    {saleItem && saleItem.qty > saleItem.stock ? 'Not Enough Stock' : 'Add to Bill'}
+                                    {saleItem && saleItem.qty > saleItem.stock ? 'Low Stock' : 'Add'}
                                 </Button>
                             </DialogFooter>
                         </DialogContent>
                     </Dialog>
                 )}
             </CardHeader>
-            <CardContent>
-                <Table>
-                    <TableHeader><TableRow><TableHead>Item</TableHead><TableHead>Qty</TableHead><TableHead>Rate</TableHead><TableHead className="text-right">Total</TableHead></TableRow></TableHeader>
+            <CardContent className="p-0 sm:p-6 pt-0 sm:pt-0">
+                <div className="overflow-x-auto"><Table>
+                    <TableHeader><TableRow><TableHead>Item</TableHead><TableHead>Qty</TableHead><TableHead className="text-right">Total</TableHead></TableRow></TableHeader>
                     <TableBody>
                         {items.length > 0 ? items.map(item => (
-                            <TableRow key={item.id}><TableCell>{item.itemName}</TableCell><TableCell>{item.qty}</TableCell><TableCell>${item.rate.toFixed(2)}</TableCell><TableCell className="text-right">${item.total.toFixed(2)}</TableCell></TableRow>
-                        )) : <TableRow><TableCell colSpan={4} className="text-center h-24">No items yet.</TableCell></TableRow>}
+                            <TableRow key={item.id}><TableCell className="font-medium">{item.itemName}</TableCell><TableCell>{item.qty}</TableCell><TableCell className="text-right font-bold">${item.total.toFixed(2)}</TableCell></TableRow>
+                        )) : <TableRow><TableCell colSpan={3} className="text-center h-24 text-muted-foreground">No items.</TableCell></TableRow>}
                     </TableBody>
-                </Table>
+                </Table></div>
             </CardContent>
         </Card>
 
-        {/* Payments Card */}
         <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>Payments</CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between p-4 sm:p-6">
+                <CardTitle className="text-lg">Payments</CardTitle>
                 {isBillOpen && (
                     <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
-                        <DialogTrigger asChild><Button size="sm"><Landmark className="mr-2 h-4 w-4"/>Add Payment</Button></DialogTrigger>
+                        <DialogTrigger asChild><Button size="sm"><Landmark className="mr-2 h-4 w-4"/>Add</Button></DialogTrigger>
                         <DialogContent>
-                            <DialogHeader><DialogTitle>Add Payment (Wasooli)</DialogTitle><DialogDescription>Record a payment for this bill.</DialogDescription></DialogHeader>
+                            <DialogHeader><DialogTitle>Add Payment</DialogTitle></DialogHeader>
                             <div className="space-y-4 py-4">
                                 <div><Label>Amount</Label><Input type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} placeholder="0.00"/></div>
                                 <div><Label>Method</Label><Select value={paymentMethod} onValueChange={(v:any) => setPaymentMethod(v)}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="Cash">Cash</SelectItem><SelectItem value="Card">Card</SelectItem><SelectItem value="Online">Online</SelectItem><SelectItem value="Other">Other</SelectItem></SelectContent></Select></div>
                             </div>
                             <DialogFooter>
                                 <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                                <Button onClick={handleAddPayment} disabled={isSaving}>{isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Save Payment</Button>
+                                <Button onClick={handleAddPayment} disabled={isSaving}>{isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Save</Button>
                             </DialogFooter>
                         </DialogContent>
                     </Dialog>
                 )}
             </CardHeader>
-            <CardContent>
-                 <Table>
+            <CardContent className="p-0 sm:p-6 pt-0 sm:pt-0">
+                 <div className="overflow-x-auto"><Table>
                     <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Method</TableHead><TableHead className="text-right">Amount</TableHead></TableRow></TableHeader>
                     <TableBody>
                         {payments.length > 0 ? payments.map(p => (
                             <TableRow key={p.id}>
-                                <TableCell>{p.createdAt ? format(p.createdAt.toDate(), 'Pp') : 'Just now'}</TableCell>
-                                <TableCell>{p.method}</TableCell>
-                                <TableCell className="text-right">${p.amount.toFixed(2)}</TableCell>
+                                <TableCell className="text-xs">{p.createdAt ? format(p.createdAt.toDate(), 'PP p') : 'Just now'}</TableCell>
+                                <TableCell className="text-xs">{p.method}</TableCell>
+                                <TableCell className="text-right font-bold text-green-600">${p.amount.toFixed(2)}</TableCell>
                             </TableRow>
-                        )) : <TableRow><TableCell colSpan={3} className="text-center h-24">No payments yet.</TableCell></TableRow>}
+                        )) : <TableRow><TableCell colSpan={3} className="text-center h-24 text-muted-foreground">No payments.</TableCell></TableRow>}
                     </TableBody>
-                </Table>
+                </Table></div>
             </CardContent>
         </Card>
     </div>
 
     {!isBillOpen && (
-        <Alert variant="destructive" className="mt-6">
+        <Alert variant="destructive" className="mt-6 border-destructive/20 bg-destructive/5">
             <AlertTriangle className="h-4 w-4" />
-            <AlertTitle>This bill is closed.</AlertTitle>
+            <AlertTitle>Bill Closed</AlertTitle>
             <AlertDescription>
-                No more items or payments can be added. The remaining balance has been carried over to a new bill.
+                This bill is finalized. Balances have been carried over to the current ledger.
             </AlertDescription>
         </Alert>
     )}

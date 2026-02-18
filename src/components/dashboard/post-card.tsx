@@ -27,7 +27,7 @@ import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { ThumbsUp, Heart, MessageCircle, MoreHorizontal, Trash2, Laugh, Sparkles, Frown, Angry as AngryIcon, Send, Pencil, X, Globe, Users, Lock, Camera, Loader2 } from 'lucide-react';
+import { ThumbsUp, Heart, MessageCircle, MoreHorizontal, Trash2, Laugh, Sparkles, Frown, Angry as AngryIcon, Send, Pencil, X, Globe, Users, Lock, Camera, Loader2, Maximize2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
@@ -90,7 +90,6 @@ function CommentItem({
   const [myCommentLike, setMyCommentLike] = useState<CommentLike | null>(null);
   const [isLikersOpen, setIsLikersOpen] = useState(false);
   
-  // Optimistic state for the icon color
   const [optimisticLike, setOptimisticLike] = useState<boolean>(false);
 
   useEffect(() => {
@@ -105,7 +104,6 @@ function CommentItem({
     return unsub;
   }, [postId, comment.id, user?.uid]);
 
-  // Fetch liker profiles
   useEffect(() => {
     if (!isLikersOpen || likes.length === 0) return;
 
@@ -163,7 +161,6 @@ function CommentItem({
   const canDelete = user?.uid === comment.userId || user?.uid === postOwnerId;
   const canEdit = user?.uid === comment.userId;
 
-  // comment.likeCount is already optimistically updated by Firestore SDK because we are listening to it
   const currentLikeCount = comment.likeCount || 0;
 
   return (
@@ -240,7 +237,6 @@ function CommentItem({
         </DropdownMenu>
       )}
 
-      {/* Comment Likers Modal */}
       <Dialog open={isLikersOpen} onOpenChange={setIsLikersOpen}>
         <DialogContent className="max-w-md p-0 h-[50vh] flex flex-col focus:outline-none">
             <DialogHeader className="p-4 border-b">
@@ -282,16 +278,14 @@ export function PostCard({ post }: { post: Post }) {
   const [userProfilesCache, setUserProfilesCache] = useState<Map<string, PublicUserProfile>>(new Map());
   const [newComment, setNewComment] = useState('');
   
-  // Optimistic UI states for the button feel
   const [optimisticReactionType, setOptimisticReactionType] = useState<ReactionType | null>(null);
   const [isAnimating, setIsAnimating] = useState(false);
 
-  // Modal states
   const [isPopoverOpen, setIsPopoverOpen] = useState(false);
   const [isCommentsOpen, setIsCommentsOpen] = useState(false);
   const [isReactionsListOpen, setIsReactionsListOpen] = useState(false);
+  const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
   
-  // Edit states
   const [isEditingPost, setIsEditingPost] = useState(false);
   const [editPostText, setEditPostText] = useState(post.text);
   const [editPostImageUrl, setEditPostImageUrl] = useState<string | null>(post.imageUrl || null);
@@ -299,7 +293,6 @@ export function PostCard({ post }: { post: Post }) {
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
-  // Refs for long press logic
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isLongPressRef = useRef(false);
   
@@ -307,7 +300,6 @@ export function PostCard({ post }: { post: Post }) {
       return { uid: p.userId, fullName: p.userName, photoUrl: p.userPhotoUrl };
   }
 
-  // Fetch author details
   useEffect(() => {
     if (!post.userId) return;
     const authorRef = doc(db, 'publicUsers', post.userId);
@@ -319,7 +311,6 @@ export function PostCard({ post }: { post: Post }) {
     return unsubscribe;
   }, [post.userId]);
   
-  // Real-time listeners for reactions and comments
   useEffect(() => {
     const reactionsRef = collection(db, 'posts', post.id, 'reactions');
     const unsubReactions = onSnapshot(reactionsRef, snapshot => {
@@ -329,7 +320,6 @@ export function PostCard({ post }: { post: Post }) {
       const foundMyReaction = reactionsData.find(r => r.userId === user?.uid) || null;
       setMyReaction(foundMyReaction);
       
-      // Sync optimistic state once real data arrives
       setOptimisticReactionType(foundMyReaction?.type || null);
     });
 
@@ -345,7 +335,6 @@ export function PostCard({ post }: { post: Post }) {
     };
   }, [post.id, user?.uid]);
 
-  // Fetch profiles for commenters AND reactors to avoid "Anonymous"
   useEffect(() => {
     const relevantIds = [...new Set([
         ...comments.map(c => c.userId),
@@ -382,7 +371,6 @@ export function PostCard({ post }: { post: Post }) {
     const oldType = myReaction?.type;
     const isUnReacting = oldType === newType;
 
-    // --- Visual Optimistic UI Update ---
     setIsAnimating(true);
     setOptimisticReactionType(isUnReacting ? null : newType);
     setTimeout(() => setIsAnimating(false), 400);
@@ -625,8 +613,14 @@ export function PostCard({ post }: { post: Post }) {
       <CardContent className="px-3 sm:px-4 py-0 pb-3">
         {post.text && <p className="text-sm whitespace-pre-wrap mb-3 leading-snug break-words">{post.text}</p>}
         {post.imageUrl && (
-          <div className="relative w-full aspect-video rounded-lg overflow-hidden -mx-3 sm:mx-0 sm:rounded-md bg-muted">
+          <div 
+            className="relative w-full aspect-video rounded-lg overflow-hidden -mx-3 sm:mx-0 sm:rounded-md bg-muted cursor-pointer group/photo"
+            onClick={() => setIsPhotoViewerOpen(true)}
+          >
             <Image src={post.imageUrl} alt="Post image" layout="fill" objectFit="contain" />
+            <div className="absolute inset-0 bg-black/0 group-hover/photo:bg-black/10 transition-colors flex items-center justify-center">
+                <Maximize2 className="text-white opacity-0 group-hover/photo:opacity-100 h-8 w-8 drop-shadow-md transition-opacity" />
+            </div>
           </div>
         )}
       </CardContent>
@@ -701,7 +695,6 @@ export function PostCard({ post }: { post: Post }) {
           </button>
         </div>
         
-        {/* Quick Comment Input */}
         <div className="w-full flex items-center gap-2 mt-1">
           <Avatar className="h-8 w-8 flex-shrink-0">
             <AvatarImage src={profile?.photoUrl || undefined} />
@@ -720,6 +713,40 @@ export function PostCard({ post }: { post: Post }) {
           </form>
         </div>
       </CardFooter>
+
+      {/* --- PHOTO VIEWER DIALOG --- */}
+      <Dialog open={isPhotoViewerOpen} onOpenChange={setIsPhotoViewerOpen}>
+        <DialogContent className="max-w-[95vw] w-full h-[95vh] p-0 border-none bg-transparent shadow-none flex items-center justify-center focus:outline-none">
+            <DialogHeader className="sr-only">
+                <DialogTitle>View Photo</DialogTitle>
+            </DialogHeader>
+            <div className="relative w-full h-full flex items-center justify-center bg-black/90 rounded-xl overflow-hidden backdrop-blur-sm">
+                {post.imageUrl && (
+                    <Image 
+                        src={post.imageUrl} 
+                        alt="Full size post" 
+                        fill 
+                        className="object-contain p-4" 
+                        priority
+                    />
+                )}
+                <div className="absolute top-4 right-4 z-50 flex gap-2">
+                    <DialogClose asChild>
+                        <Button variant="ghost" size="icon" className="rounded-full bg-white/10 text-white hover:bg-white/20 h-10 w-10">
+                            <X className="h-6 w-6" />
+                        </Button>
+                    </DialogClose>
+                </div>
+                {post.text && (
+                    <div className="absolute bottom-6 left-0 right-0 px-6 py-4 bg-gradient-to-t from-black/80 via-black/40 to-transparent">
+                        <p className="text-white text-sm sm:text-base font-medium max-w-3xl mx-auto drop-shadow-md">
+                            {post.text}
+                        </p>
+                    </div>
+                )}
+            </div>
+        </DialogContent>
+      </Dialog>
 
       {/* --- EDIT POST DIALOG --- */}
       <Dialog open={isEditingPost} onOpenChange={setIsEditingPost}>
@@ -779,7 +806,6 @@ export function PostCard({ post }: { post: Post }) {
         </DialogContent>
       </Dialog>
 
-      {/* --- ALL COMMENTS DIALOG --- */}
       <Dialog open={isCommentsOpen} onOpenChange={setIsCommentsOpen}>
         <DialogContent className="max-w-xl p-0 h-[80vh] flex flex-col focus:outline-none">
             <DialogHeader className="p-4 border-b">
@@ -830,7 +856,6 @@ export function PostCard({ post }: { post: Post }) {
         </DialogContent>
       </Dialog>
 
-      {/* --- REACTIONS LIST DIALOG --- */}
       <Dialog open={isReactionsListOpen} onOpenChange={setIsReactionsListOpen}>
         <DialogContent className="max-md p-0 h-[60vh] flex flex-col focus:outline-none">
             <DialogHeader className="p-4 border-b">
