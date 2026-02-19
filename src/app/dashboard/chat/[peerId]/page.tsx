@@ -22,7 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, Send, Paperclip, Image as ImageIcon, Package, MoreVertical, Trash2 } from 'lucide-react';
+import { ArrowLeft, Send, Paperclip, Image as ImageIcon, Package, MoreVertical, Trash2, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -87,6 +87,8 @@ export default function ChatPage(props: { params: Promise<{ peerId: string }>, s
   const [userItems, setUserItems] = useState<Item[]>([]);
   const [loadingItems, setLoadingItems] = useState(false);
   
+  const [viewingImageUrl, setViewingImageUrl] = useState<string | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
@@ -311,7 +313,11 @@ export default function ChatPage(props: { params: Promise<{ peerId: string }>, s
               ) : (
                 <>
                   {msg.text && <p className="text-sm whitespace-pre-wrap">{msg.text}</p>}
-                  {msg.imageUrl && <Image src={msg.imageUrl} alt="Shared photo" width={300} height={300} className="rounded-lg object-cover" />}
+                  {msg.imageUrl && (
+                    <button onClick={() => setViewingImageUrl(msg.imageUrl)} className="block w-full h-auto bg-transparent border-none p-0 cursor-pointer">
+                        <Image src={msg.imageUrl} alt="Shared photo" width={300} height={300} className="rounded-lg object-cover" />
+                    </button>
+                  )}
                   {msg.itemSnapshot && <SharedItemCard item={msg.itemSnapshot} />}
                 </>
               )}
@@ -368,6 +374,25 @@ export default function ChatPage(props: { params: Promise<{ peerId: string }>, s
                         </CardContent>
                     </Card>
                 ))}
+            </div>
+        </DialogContent>
+      </Dialog>
+      
+      <Dialog open={!!viewingImageUrl} onOpenChange={(open) => !open && setViewingImageUrl(null)}>
+        <DialogContent className="max-w-[95vw] w-full h-[90vh] p-0 border-none bg-transparent shadow-none flex items-center justify-center focus:outline-none">
+            <DialogHeader className="sr-only">
+                <DialogTitle>Shared Photo</DialogTitle>
+            </DialogHeader>
+            <div className="relative w-full h-full flex items-center justify-center bg-black/90 rounded-xl overflow-hidden">
+                {viewingImageUrl && (
+                    <Image src={viewingImageUrl} alt="Shared photo" fill className="object-contain p-2" priority />
+                )}
+                <button 
+                    onClick={() => setViewingImageUrl(null)}
+                    className="absolute top-4 right-4 z-50 rounded-full bg-black/40 p-2 text-white hover:bg-black/60 transition-colors"
+                >
+                    <X className="h-6 w-6" />
+                </button>
             </div>
         </DialogContent>
       </Dialog>
