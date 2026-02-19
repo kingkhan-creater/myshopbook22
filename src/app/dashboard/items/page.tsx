@@ -55,10 +55,11 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { PlusCircle, Pencil, Loader2, UserPlus, Camera, Package, Trash2 } from 'lucide-react';
-import type { Item, Customer } from '@/lib/types';
+import type { Item, Customer, CustomerBill } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
 import Image from 'next/image';
 import Link from 'next/link';
+import { Separator } from '@/components/ui/separator';
 
 const itemSchema = z.object({
   name: z.string().min(2, { message: 'Item name is required.' }),
@@ -104,6 +105,7 @@ export default function ItemsPage() {
   const [saleItems, setSaleItems] = useState<SaleBillItem[]>([]);
   const [paymentGiven, setPaymentGiven] = useState(0);
   const [isSavingSale, setIsSavingSale] = useState(false);
+  const [previousBalance, setPreviousBalance] = useState(0);
 
   const form = useForm<ItemFormValues>({ 
     resolver: zodResolver(itemSchema),
@@ -137,6 +139,31 @@ export default function ItemsPage() {
     }
   }, [isSellDialogOpen, user]);
   
+  useEffect(() => {
+    if (!user || !selectedCustomerId) {
+        setPreviousBalance(0);
+        return;
+    }
+
+    const billsQuery = query(
+        collection(db, 'users', user.uid, 'bills'),
+        where('customerId', '==', selectedCustomerId),
+        orderBy('createdAt', 'desc'),
+        limit(1)
+    );
+
+    const unsubscribe = onSnapshot(billsQuery, (snapshot) => {
+        if (!snapshot.empty) {
+            const lastBill = snapshot.docs[0].data() as CustomerBill;
+            setPreviousBalance(lastBill.remaining || 0);
+        } else {
+            setPreviousBalance(0);
+        }
+    });
+
+    return () => unsubscribe();
+  }, [user, selectedCustomerId]);
+
   const displayedItems = useMemo(() => {
     return [...items].sort((a, b) => {
         if (a.stockQty > 0 && b.stockQty === 0) return -1;
@@ -221,63 +248,78 @@ export default function ItemsPage() {
 
   const saleSummary = useMemo(() => {
     const itemsTotal = saleItems.reduce((sum, item) => sum + (Number(item.qty) * Number(item.rate)) - Number(item.discount), 0);
-    return { itemsTotal, remaining: itemsTotal - Number(paymentGiven) };
-  }, [saleItems, paymentGiven]);
+    const grandTotal = previousBalance + itemsTotal;
+    const remaining = grandTotal - Number(paymentGiven);
+    return { itemsTotal, grandTotal, remaining };
+  }, [saleItems, paymentGiven, previousBalance]);
 
   const handleSaveSale = async () => {
     if (!user || !selectedCustomerId || saleItems.length === 0) {
-        toast({ variant: 'destructive', title: "Validation Error" });
+        toast({ variant: 'destructive', title: "Validation Error", description: "Please select a customer and add items to the bill." });
         return;
     }
     setIsSavingSale(true);
     try {
-        const userBillsRef = collection(db, 'users', user.uid, 'bills');
-        const openBillQuery = query(userBillsRef, where('customerId', '==', selectedCustomerId), where('status', '==', 'OPEN'), limit(1));
-        const openBillSnapshot = await getDocs(openBillQuery);
-        
-        let billRef = openBillSnapshot.empty ? doc(userBillsRef) : openBillSnapshot.docs[0].ref;
-
         await runTransaction(db, async (transaction) => {
+            // 1. READ PHASE
             const customerRef = doc(db, 'users', user.uid, 'customers', selectedCustomerId);
             const customerSnap = await transaction.get(customerRef);
             if (!customerSnap.exists()) throw new Error("Customer not found.");
 
-            let newSaleTotal = 0;
-            saleItems.forEach(item => {
-                newSaleTotal += (item.qty * item.rate) - item.discount;
-            });
+            const billsQuery = query(
+                collection(db, 'users', user.uid, 'bills'),
+                where('customerId', '==', selectedCustomerId),
+                orderBy('createdAt', 'desc'),
+                limit(1)
+            );
+            const billsSnapshot = await transaction.get(billsQuery);
+            const latestBill = billsSnapshot.empty ? null : { id: billsSnapshot.docs[0].id, ...billsSnapshot.docs[0].data() } as CustomerBill;
 
-            const billSnap = await transaction.get(billRef);
-            if (!billSnap.exists()) {
-                const customerData = customerSnap.data() as Customer;
-                const prevBal = (customerData.totalCredit || 0) - (customerData.totalPaid || 0);
-                transaction.set(billRef, {
-                    id: billRef.id,
-                    customerId: selectedCustomerId,
-                    billNumber: Date.now().toString().slice(-6),
-                    status: 'OPEN',
-                    previousBalance: prevBal,
-                    itemsTotal: newSaleTotal,
-                    totalPaid: paymentGiven,
-                    grandTotal: prevBal + newSaleTotal,
-                    remaining: (prevBal + newSaleTotal) - paymentGiven,
-                    createdAt: serverTimestamp(),
-                    updatedAt: serverTimestamp(),
-                });
-            } else {
-                transaction.update(billRef, {
-                    itemsTotal: increment(newSaleTotal),
-                    totalPaid: increment(paymentGiven),
-                    grandTotal: increment(newSaleTotal),
-                    remaining: increment(newSaleTotal - paymentGiven),
-                    updatedAt: serverTimestamp(),
+            for (const item of saleItems) {
+                const stockItemRef = doc(db, 'users', user.uid, 'items', item.itemId);
+                const stockItemSnap = await transaction.get(stockItemRef);
+                if (!stockItemSnap.exists() || stockItemSnap.data().stockQty < item.qty) {
+                    throw new Error(`Not enough stock for ${item.itemName}.`);
+                }
+            }
+
+            // 2. LOGIC & WRITE PHASE
+            const existingOpenBill = latestBill?.status === 'OPEN' ? latestBill : null;
+            const previousBalanceForNewBill = latestBill?.remaining || 0;
+            const newItemsTotal = saleItems.reduce((sum, item) => sum + (item.qty * item.rate) - item.discount, 0);
+
+            if (existingOpenBill) {
+                const oldBillRef = doc(db, 'users', user.uid, 'bills', existingOpenBill.id);
+                transaction.update(oldBillRef, {
+                    status: 'CLOSED',
+                    closedAt: serverTimestamp()
                 });
             }
 
+            const newBillRef = doc(collection(db, 'users', user.uid, 'bills'));
+            const newGrandTotal = previousBalanceForNewBill + newItemsTotal;
+            const newRemaining = newGrandTotal - paymentGiven;
+
+            transaction.set(newBillRef, {
+                id: newBillRef.id,
+                customerId: selectedCustomerId,
+                billNumber: Date.now().toString().slice(-6),
+                status: 'OPEN',
+                previousBalance: previousBalanceForNewBill,
+                itemsTotal: newItemsTotal,
+                grandTotal: newGrandTotal,
+                totalPaid: paymentGiven,
+                remaining: newRemaining,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+            });
+
             for (const item of saleItems) {
-                transaction.update(doc(db, 'users', user.uid, 'items', item.itemId), { stockQty: increment(-item.qty) });
-                const itemDocRef = doc(collection(billRef, 'items'));
-                transaction.set(itemDocRef, {
+                const stockItemRef = doc(db, 'users', user.uid, 'items', item.itemId);
+                transaction.update(stockItemRef, { stockQty: increment(-item.qty) });
+
+                const billItemRef = doc(collection(newBillRef, 'items'));
+                transaction.set(billItemRef, {
                     itemId: item.itemId,
                     itemName: item.itemName,
                     qty: item.qty,
@@ -287,20 +329,24 @@ export default function ItemsPage() {
             }
             
             if (paymentGiven > 0) {
-                const payDocRef = doc(collection(billRef, 'payments'));
+                const payDocRef = doc(collection(newBillRef, 'payments'));
                 transaction.set(payDocRef, { amount: paymentGiven, method: 'Cash', createdAt: serverTimestamp() });
             }
             
             transaction.update(customerRef, {
-                totalCredit: increment(newSaleTotal),
+                totalCredit: increment(newItemsTotal),
                 totalPaid: increment(paymentGiven)
             });
         });
         
         toast({ title: "Sale Saved!" });
         setIsSellDialogOpen(false);
+        setSaleItems([]);
+        setPaymentGiven(0);
+        setSelectedCustomerId('');
+        setPreviousBalance(0);
     } catch (e: any) {
-        toast({ variant: 'destructive', title: "Error", description: e.message });
+        toast({ variant: 'destructive', title: "Error during sale", description: e.message });
     } finally {
         setIsSavingSale(false);
     }
@@ -407,15 +453,22 @@ export default function ItemsPage() {
                                 </div>
                             </CardContent>
                         </Card>
-                        <Card><CardHeader className="p-4"><CardTitle className="text-lg">Payment</CardTitle></CardHeader>
+                        <Card>
+                            <CardHeader className="p-4"><CardTitle className="text-lg">Summary & Payment</CardTitle></CardHeader>
                             <CardContent className="space-y-4 p-4 pt-0">
-                                <div className="text-center p-4 bg-muted rounded-lg">
-                                    <p className="text-sm text-muted-foreground">Total Sale</p><p className="text-2xl font-bold">${saleSummary.itemsTotal.toFixed(2)}</p>
+                                <div className="space-y-3 rounded-lg border p-3 bg-muted/50">
+                                    <div className="flex justify-between text-sm"><span className="text-muted-foreground">Previous Balance</span><span className="font-medium">${previousBalance.toFixed(2)}</span></div>
+                                    <div className="flex justify-between text-sm"><span className="text-muted-foreground">New Items Total</span><span className="font-medium">${saleSummary.itemsTotal.toFixed(2)}</span></div>
+                                    <Separator />
+                                    <div className="flex justify-between font-bold text-base"><span>Grand Total</span><span>${saleSummary.grandTotal.toFixed(2)}</span></div>
                                 </div>
                                 <div className="space-y-2">
                                     <Label>Payment Received</Label>
                                     <Input type="number" value={paymentGiven} onChange={(e) => setPaymentGiven(parseFloat(e.target.value) || 0)} placeholder="0.00"/>
-                                    <p className="text-lg font-semibold">Balance: <span className="text-destructive">${saleSummary.remaining.toFixed(2)}</span></p>
+                                </div>
+                                <div className="text-center p-4 bg-muted rounded-lg">
+                                    <p className="text-sm text-muted-foreground">Final Balance Due</p>
+                                    <p className="text-2xl font-bold text-destructive">${saleSummary.remaining.toFixed(2)}</p>
                                 </div>
                             </CardContent>
                         </Card>
