@@ -63,10 +63,12 @@ export default function PurchaseBillDetailPage(props: { params: Promise<{ billId
         setBill(billData);
         
         // Fetch supplier data
-        const supplierRef = doc(db, 'users', user.uid, 'suppliers', billData.supplierId);
-        const supplierSnap = await getDoc(supplierRef);
-        if(supplierSnap.exists()) {
-            setSupplier({id: supplierSnap.id, ...supplierSnap.data()} as Supplier);
+        if (billData.supplierId) {
+            const supplierRef = doc(db, 'users', user.uid, 'suppliers', billData.supplierId);
+            const supplierSnap = await getDoc(supplierRef);
+            if(supplierSnap.exists()) {
+                setSupplier({id: supplierSnap.id, ...supplierSnap.data()} as Supplier);
+            }
         }
 
       } else {
@@ -100,7 +102,7 @@ export default function PurchaseBillDetailPage(props: { params: Promise<{ billId
       const newPaymentForArray: SupplierPayment = {
           amount: amount,
           method: paymentMethod,
-          createdAt: serverTimestamp(),
+          createdAt: Timestamp.now(),
       };
 
       const batch = writeBatch(db);
