@@ -3,33 +3,29 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
-  authDomain: "shopbookpro-12345.firebaseapp.com",
-  projectId: "shopbookpro-12345",
-  storageBucket: "shopbookpro-12345.appspot.com",
-  messagingSenderId: "123456789012",
-  appId: "1:123456789012:web:XXXXXXXXXXXXXXXXXXXXXXXX"
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN!,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID!,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET!,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID!,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID!,
 };
 
-// Initialize Firebase
+if (
+  !process.env.NEXT_PUBLIC_FIREBASE_API_KEY ||
+  !process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID
+) {
+  throw new Error("Firebase environment variables are missing.");
+}
+
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
 const db = getFirestore(app);
 
 if (typeof window !== 'undefined') {
-    try {
-        enableIndexedDbPersistence(db)
-            .catch((err) => {
-                if (err.code == 'failed-precondition') {
-                    console.warn('Firestore persistence failed: multiple tabs open.');
-                } else if (err.code == 'unimplemented') {
-                    console.warn('Firestore persistence failed: browser does not support it.');
-                }
-            });
-    } catch (e) {
-      console.error("An error occurred during Firestore persistence setup:", e);
-    }
+  enableIndexedDbPersistence(db).catch(() => {
+    // silently fail in production
+  });
 }
-
 
 export { app, auth, db };
