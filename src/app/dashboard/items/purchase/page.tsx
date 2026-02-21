@@ -13,7 +13,7 @@ import {
   onSnapshot,
   doc,
   writeBatch,
-  serverTimestamp,
+  Timestamp,
   increment,
   addDoc,
 } from 'firebase/firestore';
@@ -146,7 +146,7 @@ export default function PurchasePage() {
             ...values,
             totalPurchase: 0,
             totalPaid: 0,
-            createdAt: serverTimestamp(),
+            createdAt: Timestamp.now(),
         });
         setSelectedSupplierId(newSupplierRef.id);
         toast({ title: "Supplier Added", description: `${values.name} has been added.` });
@@ -168,6 +168,7 @@ export default function PurchasePage() {
     try {
         const batch = writeBatch(db);
         const userItemsRef = collection(db, 'users', user.uid, 'items');
+        const now = Timestamp.now();
 
         for (const billItem of billItems) {
             if (billItem.itemId === 'new') {
@@ -177,7 +178,7 @@ export default function PurchasePage() {
                     purchasePrice: billItem.price,
                     salePrice: billItem.sellingPrice,
                     stockQty: billItem.qty,
-                    createdAt: serverTimestamp(),
+                    createdAt: now,
                     supplier: selectedSupplierId
                 });
             } else {
@@ -199,11 +200,11 @@ export default function PurchasePage() {
         const billRef = collection(db, 'users', user.uid, 'purchaseBills');
         await addDoc(billRef, {
             supplierId: selectedSupplierId,
-            billDate: serverTimestamp(),
+            billDate: now,
             items: billItems.map(({rowId, ...rest}) => rest),
             totalAmount: summary.grandTotal,
             paymentGiven: paymentGiven,
-            createdAt: serverTimestamp(),
+            createdAt: now,
         });
         
         await batch.commit();

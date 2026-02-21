@@ -13,7 +13,7 @@ import {
   onSnapshot,
   doc,
   writeBatch,
-  serverTimestamp,
+  Timestamp,
   increment,
   addDoc,
 } from 'firebase/firestore';
@@ -139,6 +139,7 @@ export default function PurchasePage() {
     try {
         const batch = writeBatch(db);
         const userItemsRef = collection(db, 'users', user.uid, 'items');
+        const now = Timestamp.now();
 
         for (const billItem of billItems) {
             if (billItem.itemId === 'new') {
@@ -148,7 +149,7 @@ export default function PurchasePage() {
                     purchasePrice: billItem.price,
                     salePrice: billItem.sellingPrice,
                     stockQty: billItem.qty,
-                    createdAt: serverTimestamp(),
+                    createdAt: now,
                     supplier: selectedSupplierId
                 });
             } else {
@@ -169,11 +170,11 @@ export default function PurchasePage() {
         const billRef = collection(db, 'users', user.uid, 'purchaseBills');
         await addDoc(billRef, {
             supplierId: selectedSupplierId,
-            billDate: serverTimestamp(),
+            billDate: now,
             items: billItems.map(({rowId, ...rest}) => rest),
             totalAmount: summary.grandTotal,
             paymentGiven: paymentGiven,
-            createdAt: serverTimestamp(),
+            createdAt: now,
         });
         
         await batch.commit();
@@ -219,7 +220,7 @@ export default function PurchasePage() {
                                     <DialogHeader><DialogTitle>Add Supplier</DialogTitle></DialogHeader>
                                     <Form {...supplierForm}>
                                         <form onSubmit={supplierForm.handleSubmit(async (v) => {
-                                            const ref = await addDoc(collection(db, 'users', user!.uid, 'suppliers'), { ...v, totalPurchase: 0, totalPaid: 0, createdAt: serverTimestamp() });
+                                            const ref = await addDoc(collection(db, 'users', user!.uid, 'suppliers'), { ...v, totalPurchase: 0, totalPaid: 0, createdAt: Timestamp.now() });
                                             setSelectedSupplierId(ref.id); setIsSupplierDialogOpen(false); supplierForm.reset();
                                         })} className="space-y-4">
                                             <FormField control={supplierForm.control} name="name" render={({field}) => ( <FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />

@@ -7,7 +7,7 @@ import * as z from 'zod';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, Timestamp } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -80,7 +80,7 @@ export default function NewCustomerPage() {
         ...values,
         totalCredit: 0,
         totalPaid: 0,
-        createdAt: serverTimestamp(),
+        createdAt: Timestamp.now(),
       };
       if (photoBase64) {
         dataToSave.photoBase64 = photoBase64;

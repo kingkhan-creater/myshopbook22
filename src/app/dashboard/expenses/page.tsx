@@ -15,7 +15,6 @@ import {
   updateDoc,
   deleteDoc,
   doc,
-  serverTimestamp,
   Timestamp,
 } from 'firebase/firestore';
 import { format, isThisMonth, isToday } from 'date-fns';
@@ -84,13 +83,15 @@ export default function ExpensesPage() {
     let totalAllTime = 0;
 
     for (const expense of expenses) {
-        const expenseDate = expense.date.toDate();
-        totalAllTime += expense.amount;
-        if (isThisMonth(expenseDate)) {
-            totalThisMonth += expense.amount;
-        }
-        if (isToday(expenseDate)) {
-            totalToday += expense.amount;
+        if (expense.date) {
+            const expenseDate = expense.date.toDate();
+            totalAllTime += expense.amount;
+            if (isThisMonth(expenseDate)) {
+                totalThisMonth += expense.amount;
+            }
+            if (isToday(expenseDate)) {
+                totalToday += expense.amount;
+            }
         }
     }
     return { totalThisMonth, totalToday, totalAllTime };
@@ -113,7 +114,7 @@ export default function ExpensesPage() {
       title: expense.title,
       amount: expense.amount,
       category: expense.category,
-      date: expense.date.toDate(),
+      date: expense.date ? expense.date.toDate() : new Date(),
     });
     setIsDialogOpen(true);
   }
@@ -121,21 +122,22 @@ export default function ExpensesPage() {
   const onSubmit = async (values: ExpenseFormValues) => {
     if (!user) return;
     
-    const dataToSave = {
+    const dataToSave: Omit<Expense, 'id'> & { createdAt?: Timestamp } = {
         ...values,
         date: Timestamp.fromDate(values.date),
+        createdAt: Timestamp.now()
     };
 
     try {
         if (editingExpense) {
             const expenseDoc = doc(db, 'users', user.uid, 'expenses', editingExpense.id);
-            await updateDoc(expenseDoc, dataToSave);
+            await updateDoc(expenseDoc, {
+                ...values,
+                date: Timestamp.fromDate(values.date),
+            });
             toast({ title: "Expense Updated" });
         } else {
-            await addDoc(collection(db, 'users', user.uid, 'expenses'), {
-                ...dataToSave,
-                createdAt: serverTimestamp(),
-            });
+            await addDoc(collection(db, 'users', user.uid, 'expenses'), dataToSave);
             toast({ title: "Expense Added" });
         }
         setIsDialogOpen(false);
@@ -258,7 +260,7 @@ export default function ExpensesPage() {
                     ) : (
                         expenses.map((expense) => (
                             <TableRow key={expense.id}>
-                            <TableCell>{format(expense.date.toDate(), 'PP')}</TableCell>
+                            <TableCell>{expense.date ? format(expense.date.toDate(), 'PP') : '...'}</TableCell>
                             <TableCell className="font-medium">{expense.title}</TableCell>
                             <TableCell><Badge variant="outline">{expense.category}</Badge></TableCell>
                             <TableCell className="text-right">${expense.amount.toFixed(2)}</TableCell>

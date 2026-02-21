@@ -4,7 +4,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/logo';
-import { Loader2, LogOut, User as UserIcon, Menu } from 'lucide-react';
+import { Loader2, LogOut, User as UserIcon, Menu, WifiOff } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,6 +26,8 @@ import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { DashboardNav } from '@/components/dashboard-nav';
 import Link from 'next/link';
+import { useOnlineStatus } from '@/hooks/use-online-status';
+import { Badge } from '@/components/ui/badge';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -33,6 +35,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { toast } = useToast();
   const [photoURL, setPhotoURL] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isOnline = useOnlineStatus();
 
   useEffect(() => {
     if (!loading && (!user || !user.emailVerified)) {
@@ -188,8 +191,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <DashboardNav className="p-4" />
             </SheetContent>
           </Sheet>
-          <div className="w-full flex-1">
-            {/* Can add search bar here later */}
+          <div className="w-full flex-1 flex items-center">
+            {!isOnline && (
+              <Badge variant="destructive" className="flex items-center gap-2">
+                <WifiOff className="h-4 w-4" />
+                Offline Mode
+              </Badge>
+            )}
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

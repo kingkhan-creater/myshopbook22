@@ -11,11 +11,10 @@ import {
   query,
   onSnapshot,
   runTransaction,
-  serverTimestamp,
+  Timestamp,
   writeBatch,
   addDoc,
   orderBy,
-  Timestamp,
   updateDoc,
   increment,
   where
@@ -122,19 +121,20 @@ export default function BillDetailPage(props: { params: Promise<{ customerId: st
       const billRef = doc(db, 'users', user.uid, 'bills', billId);
       const customerRef = doc(db, 'users', user.uid, 'customers', customerId);
       const paymentRef = doc(collection(billRef, 'payments'));
+      const now = Timestamp.now();
       
       const batch = writeBatch(db);
 
       batch.set(paymentRef, {
           amount: amount,
           method: paymentMethod,
-          createdAt: serverTimestamp(),
+          createdAt: now,
       });
 
       batch.update(billRef, {
           totalPaid: increment(amount),
           remaining: increment(-amount),
-          updatedAt: serverTimestamp()
+          updatedAt: now
       });
       
       batch.update(customerRef, {
@@ -170,6 +170,7 @@ export default function BillDetailPage(props: { params: Promise<{ customerId: st
         const customerRef = doc(db, 'users', user.uid, 'customers', customerId);
         const stockItemRef = doc(db, 'users', user.uid, 'items', itemId);
         const billItemRef = doc(collection(billRef, 'items'));
+        const now = Timestamp.now();
 
         await runTransaction(db, async (transaction) => {
             const stockItemSnap = await transaction.get(stockItemRef);
@@ -191,7 +192,7 @@ export default function BillDetailPage(props: { params: Promise<{ customerId: st
                 itemsTotal: increment(total),
                 grandTotal: increment(total),
                 remaining: increment(total),
-                updatedAt: serverTimestamp()
+                updatedAt: now
             });
             
             transaction.update(customerRef, {
@@ -213,6 +214,7 @@ export default function BillDetailPage(props: { params: Promise<{ customerId: st
   const handleCloseBill = async () => {
       if (!user || !bill || !customer || !isBillOpen) return;
       setIsSaving(true);
+      const now = Timestamp.now();
       try {
         await runTransaction(db, async (transaction) => {
             const oldBillRef = doc(db, 'users', user.uid, 'bills', billId);
@@ -220,7 +222,7 @@ export default function BillDetailPage(props: { params: Promise<{ customerId: st
             
             transaction.update(oldBillRef, {
                 status: 'CLOSED',
-                closedAt: serverTimestamp()
+                closedAt: now
             });
 
             transaction.set(newBillRef, {
@@ -233,7 +235,7 @@ export default function BillDetailPage(props: { params: Promise<{ customerId: st
                 totalPaid: 0,
                 grandTotal: bill.remaining,
                 remaining: bill.remaining,
-                createdAt: serverTimestamp(),
+                createdAt: now,
             });
         });
         toast({ title: 'Bill Closed', description: `A new bill has been opened for ${customer.name}.` });
