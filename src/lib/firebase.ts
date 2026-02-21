@@ -3,32 +3,33 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCPRNHrIV8Jvx55GBQ-OHipugwNyR0olZ4",
-  authDomain: "cashbookpro-c454b.firebaseapp.com",
-  projectId: "cashbookpro-c454b",
-  storageBucket: "cashbookpro-c454b.appspot.com",
-  messagingSenderId: "1096890685787",
-  appId: "1:1096890685787:web:81abfbc89c25f143eee27e"
+  apiKey: "AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+  authDomain: "shopbookpro-12345.firebaseapp.com",
+  projectId: "shopbookpro-12345",
+  storageBucket: "shopbookpro-12345.appspot.com",
+  messagingSenderId: "123456789012",
+  appId: "1:123456789012:web:XXXXXXXXXXXXXXXXXXXXXXXX"
 };
 
-// Initialize Firebase App
+// Initialize Firebase
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
-
-// Initialize Firestore
 const db = getFirestore(app);
 
-// Enable offline persistence only on the client-side.
-// This check prevents the code from running on the server.
 if (typeof window !== 'undefined') {
-  enableIndexedDbPersistence(db)
-    .catch((err) => {
-      if (err.code == 'failed-precondition') {
-        console.warn('Firestore persistence failed: multiple tabs open. Some features may not work offline.');
-      } else if (err.code == 'unimplemented') {
-        console.warn('Firestore persistence failed: browser does not support it.');
-      }
-    });
+    try {
+        enableIndexedDbPersistence(db)
+            .catch((err) => {
+                if (err.code == 'failed-precondition') {
+                    console.warn('Firestore persistence failed: multiple tabs open.');
+                } else if (err.code == 'unimplemented') {
+                    console.warn('Firestore persistence failed: browser does not support it.');
+                }
+            });
+    } catch (e) {
+      console.error("An error occurred during Firestore persistence setup:", e);
+    }
 }
+
 
 export { app, auth, db };
