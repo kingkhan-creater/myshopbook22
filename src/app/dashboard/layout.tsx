@@ -4,7 +4,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/logo';
-import { Loader2, LogOut, User as UserIcon, Menu, WifiOff } from 'lucide-react';
+import { Loader2, LogOut, User as UserIcon, Menu, WifiOff, Bell } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,14 +20,114 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { auth, db } from '@/lib/firebase';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, collection, query, where, onSnapshot, orderBy, limit, writeBatch } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { DashboardNav } from '@/components/dashboard-nav';
 import Link from 'next/link';
 import { useOnlineStatus } from '@/hooks/use-online-status';
 import { Badge } from '@/components/ui/badge';
+import type { Notification } from '@/lib/types';
+import { formatDistanceToNow } from 'date-fns';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { cn } from '@/lib/utils';
+
+function NotificationBell() {
+  const { user } = useAuth();
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [isOpen, setIsOpen] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const q = query(
+      collection(db, 'notifications'),
+      where('userId', '==', user.uid),
+      orderBy('createdAt', 'desc'),
+      limit(10)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const notifsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Notification));
+      setNotifications(notifsData);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  const unreadCount = useMemo(() => notifications.filter(n => !n.isRead).length, [notifications]);
+
+  const handleOpenChange = async (open: boolean) => {
+    setIsOpen(open);
+    if (open && unreadCount > 0) {
+      const batch = writeBatch(db);
+      notifications.forEach(notif => {
+        if (!notif.isRead) {
+          const notifRef = doc(db, 'notifications', notif.id);
+          batch.update(notifRef, { isRead: true });
+        }
+      });
+      await batch.commit().catch(err => console.error("Failed to mark notifications as read", err));
+    }
+  };
+
+  const getInitials = (name: string) => (name || '').substring(0, 2).toUpperCase();
+
+  return (
+    <DropdownMenu open={isOpen} onOpenChange={handleOpenChange}>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" className="relative h-10 w-10 rounded-full">
+          <Bell className="h-5 w-5" />
+          {unreadCount > 0 && (
+            <Badge className="absolute top-1 right-1 h-5 w-5 p-0 flex items-center justify-center text-xs" variant="destructive">
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </Badge>
+          )}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent className="w-80 md:w-96" align="end">
+        <DropdownMenuLabel className="flex justify-between items-center">
+          <span>Notifications</span>
+          {unreadCount > 0 && <Badge variant="secondary">{unreadCount} new</Badge>}
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <ScrollArea className="h-[350px]">
+          {notifications.length > 0 ? (
+            notifications.map(notif => (
+              <DropdownMenuItem key={notif.id} className="p-0 focus:bg-transparent" onSelect={(e) => e.preventDefault()}>
+                <Link
+                  href={notif.link || '#'}
+                  className={cn(
+                    "flex w-full items-start gap-3 p-3 hover:bg-accent transition-colors",
+                    !notif.isRead && "bg-primary/5"
+                  )}
+                  onClick={() => setIsOpen(false)}
+                >
+                  <Avatar className="h-8 w-8 mt-1">
+                    <AvatarImage src={notif.senderPhotoUrl ?? undefined} />
+                    <AvatarFallback>{getInitials(notif.senderName)}</AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm break-words">
+                      <span className="font-semibold">{notif.senderName}</span> {notif.text}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {notif.createdAt ? formatDistanceToNow(notif.createdAt.toDate(), { addSuffix: true }) : '...'}
+                    </p>
+                  </div>
+                </Link>
+              </DropdownMenuItem>
+            ))
+          ) : (
+            <p className="p-10 text-center text-sm text-muted-foreground">You have no notifications.</p>
+          )}
+        </ScrollArea>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -199,6 +299,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </Badge>
             )}
           </div>
+          <NotificationBell />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-10 w-10 rounded-full">

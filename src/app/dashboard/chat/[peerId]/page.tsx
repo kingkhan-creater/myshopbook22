@@ -70,7 +70,7 @@ export default function ChatPage(props: { params: Promise<{ peerId: string }>, s
   // Unwrap searchParams to satisfy dynamic API proxy even if not used
   use(props.searchParams);
   
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
 
@@ -161,7 +161,7 @@ export default function ChatPage(props: { params: Promise<{ peerId: string }>, s
   }, [isItemDialogOpen, user]);
 
   const sendMessage = useCallback(async (messageData: Omit<Message, 'id' | 'senderId' | 'createdAt'>, lastMessageText: string) => {
-    if (!user || !chatId) return;
+    if (!user || !chatId || !profile) return;
 
     try {
         const messagesRef = collection(db, 'chats', chatId, 'messages');
@@ -178,11 +178,24 @@ export default function ChatPage(props: { params: Promise<{ peerId: string }>, s
           lastMessageAt: serverTimestamp(), 
           members: [user.uid, peerId] 
         }, { merge: true });
+        
+        // Create notification
+        await addDoc(collection(db, 'notifications'), {
+          userId: peerId, // The receiver of the notification
+          senderId: user.uid,
+          senderName: profile.fullName || user.displayName || 'Someone',
+          senderPhotoUrl: profile.photoUrl || null,
+          type: 'new_message',
+          text: 'sent you a new message.',
+          link: `/dashboard/chat/${user.uid}`,
+          isRead: false,
+          createdAt: serverTimestamp(),
+        });
     } catch (error) {
         console.error("Send Message Error:", error);
         toast({ variant: 'destructive', title: 'Error', description: 'Could not send message.' });
     }
-  }, [user, chatId, peerId, toast]);
+  }, [user, profile, chatId, peerId, toast]);
 
   const handleSendTextMessage = async (e: React.FormEvent) => {
     e.preventDefault();

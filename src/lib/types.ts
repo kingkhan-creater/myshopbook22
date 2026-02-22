@@ -227,3 +227,16 @@ export interface MarketplaceItem {
   status: 'ACTIVE' | 'SOLD';
   createdAt: Timestamp;
 }
+
+export interface Notification {
+  id: string;
+  userId: string; // The receiver
+  senderId: string;
+  senderName: string;
+  senderPhotoUrl?: string | null;
+  type: 'new_message';
+  text: string;
+  link: string; // e.g., /dashboard/chat/[senderId]
+  isRead: boolean;
+  createdAt: Timestamp;
+}
