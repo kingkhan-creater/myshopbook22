@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useAuth } from '@/hooks/use-auth';
@@ -22,7 +23,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { auth, db } from '@/lib/firebase';
-import { doc, getDoc, updateDoc, collection, query, where, onSnapshot, orderBy, limit, writeBatch } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, collection, query, where, onSnapshot, orderBy, limit } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { DashboardNav } from '@/components/dashboard-nav';
 import Link from 'next/link';
@@ -36,7 +37,7 @@ import { cn } from '@/lib/utils';
 function NotificationBell() {
   const { user } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [isOpen, setIsOpen] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
     if (!user) {
@@ -63,24 +64,25 @@ function NotificationBell() {
 
   const unreadCount = useMemo(() => notifications.filter(n => !n.isRead).length, [notifications]);
 
-  const handleOpenChange = async (open: boolean) => {
-    setIsOpen(open);
-    if (open && unreadCount > 0) {
-      const batch = writeBatch(db);
-      notifications.forEach(notif => {
-        if (!notif.isRead) {
-          const notifRef = doc(db, 'notifications', notif.id);
-          batch.update(notifRef, { isRead: true });
-        }
-      });
-      await batch.commit().catch(err => console.error("Failed to mark notifications as read", err));
+  const handleNotificationClick = async (notification: Notification) => {
+    if (!notification.isRead) {
+      const notifRef = doc(db, 'notifications', notification.id);
+      try {
+        // This update happens in the background. The UI will update automatically
+        // via the onSnapshot listener, providing a seamless experience.
+        updateDoc(notifRef, { isRead: true });
+      } catch (error) {
+        console.error("Failed to mark notification as read", error);
+      }
     }
+    // Navigate immediately for a responsive feel.
+    router.push(notification.link || '#');
   };
 
   const getInitials = (name: string) => (name || '').substring(0, 2).toUpperCase();
 
   return (
-    <DropdownMenu open={isOpen} onOpenChange={handleOpenChange}>
+    <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="relative h-10 w-10 rounded-full">
           <Bell className="h-5 w-5" />
@@ -100,14 +102,15 @@ function NotificationBell() {
         <ScrollArea className="h-[350px]">
           {notifications.length > 0 ? (
             notifications.map(notif => (
-              <DropdownMenuItem key={notif.id} className="p-0 focus:bg-transparent" asChild>
-                <Link
-                  href={notif.link || '#'}
-                  className={cn(
-                    "flex w-full items-start gap-3 p-3 hover:bg-accent transition-colors",
-                    !notif.isRead && "bg-primary/5"
-                  )}
-                >
+              <DropdownMenuItem
+                key={notif.id}
+                onSelect={() => handleNotificationClick(notif)}
+                className={cn(
+                  "p-0 focus:bg-accent cursor-pointer data-[highlighted]:bg-accent",
+                  !notif.isRead && "bg-primary/5 data-[highlighted]:bg-primary/10"
+                )}
+              >
+                <div className="flex w-full items-start gap-3 p-3">
                   <Avatar className="h-8 w-8 mt-1">
                     <AvatarImage src={notif.senderPhotoUrl ?? undefined} />
                     <AvatarFallback>{getInitials(notif.senderName)}</AvatarFallback>
@@ -120,7 +123,7 @@ function NotificationBell() {
                       {notif.createdAt ? formatDistanceToNow(notif.createdAt.toDate(), { addSuffix: true }) : '...'}
                     </p>
                   </div>
-                </Link>
+                </div>
               </DropdownMenuItem>
             ))
           ) : (
