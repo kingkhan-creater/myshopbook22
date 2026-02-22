@@ -45,9 +45,11 @@ function NotificationBell() {
       return;
     }
 
+    // Query for unread notifications only
     const q = query(
       collection(db, 'notifications'),
       where('userId', '==', user.uid),
+      where('isRead', '==', false),
       orderBy('createdAt', 'desc'),
       limit(10)
     );
@@ -62,20 +64,10 @@ function NotificationBell() {
     return () => unsubscribe();
   }, [user]);
 
-  const unreadCount = useMemo(() => notifications.filter(n => !n.isRead).length, [notifications]);
+  const unreadCount = notifications.length;
 
-  const handleNotificationClick = async (notification: Notification) => {
-    if (!notification.isRead) {
-      const notifRef = doc(db, 'notifications', notification.id);
-      try {
-        // This update happens in the background. The UI will update automatically
-        // via the onSnapshot listener, providing a seamless experience.
-        updateDoc(notifRef, { isRead: true });
-      } catch (error) {
-        console.error("Failed to mark notification as read", error);
-      }
-    }
-    // Navigate immediately for a responsive feel.
+  // The click handler now only navigates. The 'read' action is handled in the chat page.
+  const handleNotificationClick = (notification: Notification) => {
     router.push(notification.link || '#');
   };
 
@@ -104,10 +96,12 @@ function NotificationBell() {
             notifications.map(notif => (
               <DropdownMenuItem
                 key={notif.id}
-                onSelect={() => handleNotificationClick(notif)}
+                onSelect={(e) => {
+                  e.preventDefault(); // Prevent dropdown from closing immediately
+                  handleNotificationClick(notif);
+                }}
                 className={cn(
-                  "p-0 focus:bg-accent cursor-pointer data-[highlighted]:bg-accent",
-                  !notif.isRead && "bg-primary/5 data-[highlighted]:bg-primary/10"
+                  "p-0 focus:bg-accent cursor-pointer data-[highlighted]:bg-accent"
                 )}
               >
                 <div className="flex w-full items-start gap-3 p-3">
@@ -127,7 +121,7 @@ function NotificationBell() {
               </DropdownMenuItem>
             ))
           ) : (
-            <p className="p-10 text-center text-sm text-muted-foreground">You have no notifications.</p>
+            <p className="p-10 text-center text-sm text-muted-foreground">You're all caught up!</p>
           )}
         </ScrollArea>
       </DropdownMenuContent>

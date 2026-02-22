@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useMemo, useRef, useCallback, use } from 'react';
@@ -6,8 +7,11 @@ import { db } from '@/lib/firebase';
 import {
   collection,
   query,
+  where,
   doc,
   getDoc,
+  getDocs,
+  writeBatch,
   setDoc,
   addDoc,
   updateDoc,
@@ -105,9 +109,26 @@ export default function ChatPage(props: { params: Promise<{ peerId: string }>, s
 
     let unsubscribeMessages: (() => void) | null = null;
 
-    const setupChat = async () => {
+    const setupChatAndClearNotifications = async () => {
       setLoading(true);
       try {
+        // Part 1: Mark notifications from this peer as read
+        const notificationsQuery = query(
+          collection(db, 'notifications'),
+          where('userId', '==', user.uid),
+          where('senderId', '==', peerId),
+          where('isRead', '==', false)
+        );
+        const notificationsSnapshot = await getDocs(notificationsQuery);
+        if (!notificationsSnapshot.empty) {
+          const batch = writeBatch(db);
+          notificationsSnapshot.forEach(doc => {
+            batch.update(doc.ref, { isRead: true });
+          });
+          await batch.commit();
+        }
+
+        // Part 2: Existing chat setup logic
         const friendshipRef = doc(db, 'friendships', createChatId(user.uid, peerId));
         const friendshipSnap = await getDoc(friendshipRef);
 
@@ -142,7 +163,7 @@ export default function ChatPage(props: { params: Promise<{ peerId: string }>, s
       } finally { setLoading(false); }
     };
 
-    setupChat();
+    setupChatAndClearNotifications();
     return () => {
       if (unsubscribeMessages) unsubscribeMessages();
     };
