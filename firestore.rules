@@ -169,11 +169,16 @@ service cloud.firestore {
 
     /* ================= NOTIFICATIONS ================= */
     match /notifications/{notificationId} {
-      allow read: if isAuth() && resource.data.userId == request.auth.uid;
-      allow create: if isAuth();
+      allow read: if isAuth()
+        && 'userId' in resource.data
+        && resource.data.userId == request.auth.uid;
+
+      allow create: if isAuth() && request.resource.data.senderId == request.auth.uid;
+      
       allow update: if isAuth() 
         && resource.data.userId == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead']);
+        
       allow delete: if false;
     }
   }
