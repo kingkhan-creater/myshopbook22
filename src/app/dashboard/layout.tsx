@@ -39,7 +39,10 @@ function NotificationBell() {
   const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      setNotifications([]); // Clear notifications on logout
+      return;
+    }
 
     const q = query(
       collection(db, 'notifications'),
@@ -51,6 +54,8 @@ function NotificationBell() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const notifsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Notification));
       setNotifications(notifsData);
+    }, (error) => {
+      console.error("Firestore (11.9.0): Uncaught Error in snapshot listener:", error);
     });
 
     return () => unsubscribe();
@@ -95,14 +100,13 @@ function NotificationBell() {
         <ScrollArea className="h-[350px]">
           {notifications.length > 0 ? (
             notifications.map(notif => (
-              <DropdownMenuItem key={notif.id} className="p-0 focus:bg-transparent" onSelect={(e) => e.preventDefault()}>
+              <DropdownMenuItem key={notif.id} className="p-0 focus:bg-transparent" asChild>
                 <Link
                   href={notif.link || '#'}
                   className={cn(
                     "flex w-full items-start gap-3 p-3 hover:bg-accent transition-colors",
                     !notif.isRead && "bg-primary/5"
                   )}
-                  onClick={() => setIsOpen(false)}
                 >
                   <Avatar className="h-8 w-8 mt-1">
                     <AvatarImage src={notif.senderPhotoUrl ?? undefined} />
